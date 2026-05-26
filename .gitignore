@@ -1,0 +1,6 @@
+/raind
+/raind.exe
+/raind-arm64
+*.tar.gz
+*.zip
+dist/

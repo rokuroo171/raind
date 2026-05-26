@@ -1,0 +1,97 @@
+# raind
+
+Terminal weather screensaver written in Go. Four modes: rain, thunder, snow, and meteor shower. Single static binary, no CGO, runs anywhere.
+
+## Install
+
+Linux **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.1.0**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rokuroo171/raind/main/install.sh | sh
+```
+
+Or clone and run the installer locally:
+
+```bash
+git clone https://github.com/rokuroo171/raind.git
+cd raind
+./install.sh
+```
+
+Options:
+
+```bash
+./install.sh --from-source
+INSTALL_DIR=$HOME/.local/bin ./install.sh
+VERSION=0.1.0 ./install.sh
+```
+
+Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.1.0_linux_amd64.tar.gz`, `raind_0.1.0_linux_arm64.tar.gz`).
+
+## Build from source
+
+Requires Go 1.21+.
+
+```bash
+git clone https://github.com/rokuroo171/raind.git
+cd raind
+CGO_ENABLED=0 go build -o raind
+./raind
+```
+
+## Cross-compile
+
+arm64:
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o raind-arm64
+```
+
+Windows:
+```bash
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o raind.exe
+```
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| `R` | Rain mode |
+| `T` | Thunder mode |
+| `S` | Snow mode |
+| `M` | Meteor shower mode |
+| `+` / `=` | Increase speed |
+| `-` | Decrease speed |
+| `Q` / `Esc` / `Ctrl+C` | Quit |
+
+## CLI
+
+| Flag | Default | Values |
+|------|---------|--------|
+| `--mode`, `-m` | `rain` | `rain`, `thunder`, `snow`, `meteor` |
+| `--color`, `-c` | `cyan` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
+| `--speed`, `-s` | `medium` | `slow`, `medium`, `fast` |
+| `--help`, `-h` | | Show usage |
+
+Mode aliases (also accepted by `--mode`):
+
+| Mode | Aliases |
+|------|---------|
+| Thunder | `thunderstorm` |
+| Meteor | `meteors`, `shooting`, `shower` |
+
+Examples:
+
+```bash
+raind --mode snow --color white --speed slow
+raind --mode thunder --speed fast
+raind --mode meteor --color yellow --speed fast
+raind -m shower -c white -s medium
+```
+
+## Packaging
+
+GoReleaser builds `linux-amd64`, `linux-arm64`, and `windows-amd64`.
+
+## License
+
+MIT
