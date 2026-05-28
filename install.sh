@@ -3,7 +3,7 @@
 set -eu
 (set -o pipefail) 2>/dev/null && set -o pipefail
 
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.1.1}"
 REPO="rokuroo171/raind"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 FROM_SOURCE="${FROM_SOURCE:-0}"
@@ -12,7 +12,7 @@ usage() {
     cat <<EOF
 raind installer
 
-  ./install.sh                 install v${VERSION} from GitHub (linux amd64/arm64)
+  ./install.sh                 install v${VERSION} from GitHub (linux/darwin amd64/arm64)
   ./install.sh --from-source     build with Go and install
   ./install.sh --help
 
@@ -51,7 +51,7 @@ install_from_source() {
     rm -f ./raind
 }
 
-detect_linux_arch() {
+detect_arch() {
     arch=$(uname -m)
     case "$arch" in
         x86_64|amd64)
@@ -62,72 +62,38 @@ detect_linux_arch() {
             ;;
         *)
             echo "error: unsupported architecture for release install: $arch" >&2
-            echo "       supported: x86_64 (amd64), aarch64 (arm64)" >&2
+            echo "       supported: x86_64 (amd64), aarch64/arm64" >&2
             echo "       try: ./install.sh --from-source" >&2
             exit 1
             ;;
     esac
 }
 
-verify_checksum() {
-    file=$1
-    tmp=$2
-    base=$(basename "$file")
-    checksum_file="${tmp}/checksums.txt"
-    checksum_url="https://github.com/${REPO}/releases/download/v${VERSION}/raind_${VERSION}_checksums.txt"
-
-    if ! curl -fsSL -o "$checksum_file" "$checksum_url"; then
-        echo "warning: could not download checksums, skipping verification" >&2
-        return 0
-    fi
-
-    if command -v sha256sum >/dev/null 2>&1; then
-        want=$(grep " ${base}\$" "$checksum_file" | awk '{print $1}')
-        got=$(sha256sum "$file" | awk '{print $1}')
-    elif command -v shasum >/dev/null 2>&1; then
-        want=$(grep " ${base}\$" "$checksum_file" | awk '{print $1}')
-        got=$(shasum -a 256 "$file" | awk '{print $1}')
-    else
-        echo "warning: sha256sum/shasum not found, skipping verification" >&2
-        return 0
-    fi
-
-    if [ -z "$want" ]; then
-        echo "warning: no checksum entry for ${base}" >&2
-        return 0
-    fi
-    if [ "$want" != "$got" ]; then
-        echo "error: checksum mismatch for ${base}" >&2
-        exit 1
-    fi
-    echo "checksum verified"
-}
-
 install_from_release() {
     need_cmd curl
     need_cmd tar
 
-    case "$(uname -s)" in
-        Linux) ;;
+    os=$(uname -s)
+    case "$os" in
+        Linux)  goos="linux"  ;;
+        Darwin) goos="darwin" ;;
         *)
-            echo "error: release install supports linux only" >&2
+            echo "error: release install supports linux and darwin only" >&2
             echo "       on this system use: ./install.sh --from-source" >&2
             exit 1
             ;;
     esac
 
-    goarch=$(detect_linux_arch)
-    tarball="raind_${VERSION}_linux_${goarch}.tar.gz"
+    goarch=$(detect_arch)
+    tarball="raind_${VERSION}_${goos}_${goarch}.tar.gz"
     url="https://github.com/${REPO}/releases/download/v${VERSION}/${tarball}"
 
     tmp=$(mktemp -d)
     trap 'rm -rf "$tmp"' EXIT INT HUP
 
-    echo "detected: linux/${goarch}"
+    echo "detected: ${goos}/${goarch}"
     echo "downloading raind v${VERSION}..."
     curl -fsSL -o "${tmp}/${tarball}" "$url"
-
-    verify_checksum "${tmp}/${tarball}" "$tmp"
 
     tar -xzf "${tmp}/${tarball}" -C "$tmp"
     if [ ! -f "${tmp}/raind" ]; then

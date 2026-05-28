@@ -1,12 +1,12 @@
 package modes
 
 import (
+	"math"
 	"math/rand"
 
 	"github.com/gdamore/tcell/v2"
 )
 
-// renders thunderstorm mode
 func DrawThunderstorm(screen tcell.Screen, st *State) {
 	if st.StormIntensity < 1.0 {
 		st.StormIntensity += 0.0008
@@ -33,9 +33,52 @@ func DrawThunderstorm(screen tcell.Screen, st *State) {
 		}
 	}
 
+	if st.StormFlash > 0 {
+		flashRows := 2
+		if st.Height < flashRows {
+			flashRows = st.Height
+		}
+		flashStyle := tcell.StyleDefault.Background(tcell.ColorWhite)
+		for y := 0; y < flashRows; y++ {
+			for x := 0; x < st.Width; x++ {
+				screen.SetContent(x, y, ' ', nil, flashStyle)
+			}
+		}
+		st.StormFlash--
+	}
+
 	st.drawLightning(screen)
 	st.updateRain()
+	st.drawThunderDepthLayer(screen)
 	st.drawRain(screen, true)
+}
+
+func (st *State) drawThunderDepthLayer(screen tcell.Screen) {
+	w, h := st.Width, st.Height
+	if w == 0 || h == 0 {
+		return
+	}
+	depthStyle := rainStyle(st.Color, true)
+	for i := range st.Particles {
+		if i%2 == 1 {
+			continue
+		}
+		p := &st.Particles[i]
+		if !p.Active || p.Splash > 0 {
+			continue
+		}
+		headX := int(math.Round(p.X - p.VX*1.4))
+		headY := int(math.Round(p.Y - p.VY*0.7))
+		if headY < 0 || headY >= h {
+			continue
+		}
+		headX = headX % w
+		if headX < 0 {
+			headX += w
+		}
+		ch := rainGlyphForWind(p.VX * 0.75)
+		screen.SetContent(headX, headY, ch, nil, depthStyle)
+	}
 }
 
 func (st *State) spawnLightning() {
@@ -131,6 +174,7 @@ func (st *State) drawLightning(screen tcell.Screen) {
 			continue
 		}
 		if b.HaloFrame {
+			st.StormFlash = 4
 			for _, pt := range b.Points {
 				for dx := -3; dx <= 3; dx++ {
 					if dx == 0 {
@@ -156,12 +200,8 @@ func (st *State) drawLightning(screen tcell.Screen) {
 		}
 	}
 	st.Bolts = remaining
-	if len(st.Bolts) == 0 {
-		st.StormFlash = 0
-	}
 }
 
-// InitThunderstorm sets up thunderstorm simulation state.
 func (st *State) InitThunderstorm() {
 	st.StormIntensity = 0.1
 	st.Wind = 0

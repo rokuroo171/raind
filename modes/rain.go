@@ -14,6 +14,7 @@ const (
 	ModeThunderstorm
 	ModeSnow
 	ModeMeteor
+	ModeAuto
 )
 
 type SpeedLevel int
@@ -36,22 +37,22 @@ type Particle struct {
 }
 
 type Snowflake struct {
-	X, Y    float64
-	Drift   float64
-	Speed   float64
-	Weight  float64
-	Char    rune
-	Active  bool
+	X, Y   float64
+	Drift  float64
+	Speed  float64
+	Weight float64
+	Char   rune
+	Active bool
 }
 
 type Meteor struct {
-	X, Y      float64
-	VX, VY    float64
-	Life      int
-	MaxLife   int
-	TrailLen  int
-	HeadChar  rune
-	Active    bool
+	X, Y     float64
+	VX, VY   float64
+	Life     int
+	MaxLife  int
+	TrailLen int
+	HeadChar rune
+	Active   bool
 }
 
 type Star struct {
@@ -86,6 +87,7 @@ type State struct {
 	Speed         SpeedLevel
 	Color         tcell.Color
 	Frame         int
+	FocusMode     bool
 
 	// rain or thunderstorm
 	Wind           float64
@@ -97,14 +99,16 @@ type State struct {
 	Bolts          []BoltStrike
 
 	// snow
-	Flakes []Snowflake
+	Flakes   []Snowflake
+	AccumRow []int
 
 	// meteor
-	Meteors           []Meteor
-	Stars             []Star
-	Sparks            []Spark
-	MeteorFlash       int
-	MeteorShowerTimer int
+	Meteors             []Meteor
+	Stars               []Star
+	Sparks              []Spark
+	MeteorFlash         int
+	MeteorShowerTimer   int
+	MeteorFireballTimer int
 }
 
 var rainChars = []rune{'|', ':', '·', '′', '¦'}
@@ -120,6 +124,8 @@ func ParseMode(s string) (Mode, bool) {
 		return ModeSnow, true
 	case "meteor", "meteors", "shooting", "shower":
 		return ModeMeteor, true
+	case "auto":
+		return ModeAuto, true
 	default:
 		return ModeRain, false
 	}
@@ -149,7 +155,7 @@ func ParseColor(s string) (tcell.Color, bool) {
 	}
 }
 
-// this function converts a CLI speed name to SpeedLevel.
+// thisconverts a CLI speed name to SpeedLevel.
 func ParseSpeed(s string) (SpeedLevel, bool) {
 	switch s {
 	case "slow":
@@ -163,7 +169,6 @@ func ParseSpeed(s string) (SpeedLevel, bool) {
 	}
 }
 
-// this function returns a scalar for drop motion.
 func (s SpeedLevel) SpeedMultiplier() float64 {
 	switch s {
 	case SpeedSlow:
@@ -175,7 +180,6 @@ func (s SpeedLevel) SpeedMultiplier() float64 {
 	}
 }
 
-// this function returns the sleep duration between frames for a mode.
 func FrameDelay(mode Mode, speed SpeedLevel) int {
 	base := 45
 	switch mode {
@@ -261,8 +265,10 @@ func (st *State) targetParticleCount(density float64) int {
 func (st *State) initSnow() {
 	if st.Width <= 0 || st.Height <= 0 {
 		st.Flakes = nil
+		st.AccumRow = nil
 		return
 	}
+	st.AccumRow = make([]int, st.Width)
 	n := (st.Width * st.Height) / 120
 	if n < 8 {
 		n = 8
@@ -318,11 +324,17 @@ func (st *State) initMeteors() {
 	st.Sparks = make([]Spark, 48)
 	st.MeteorFlash = 0
 	st.MeteorShowerTimer = 120 + rand.Intn(180)
+	st.MeteorFireballTimer = 400 + rand.Intn(300)
 }
 
 func (st *State) Resize(w, h int) {
 	st.Width = w
 	st.Height = h
+	if w > 0 {
+		st.AccumRow = make([]int, w)
+	} else {
+		st.AccumRow = nil
+	}
 	switch st.Mode {
 	case ModeThunderstorm:
 		density := 0.35 + st.StormIntensity*0.45
@@ -375,9 +387,17 @@ func (st *State) updateWind() {
 	if st.WindTick >= 180+rand.Intn(121) {
 		st.WindTick = 0
 		if st.Mode == ModeThunderstorm {
-			st.WindTarget = -0.9 + rand.Float64()*1.8
+			rangeScale := 1.0
+			if st.FocusMode {
+				rangeScale = 0.75
+			}
+			st.WindTarget = (-0.9 + rand.Float64()*1.8) * rangeScale
 		} else {
-			st.WindTarget = -0.6 + rand.Float64()*1.2
+			rangeScale := 1.0
+			if st.FocusMode {
+				rangeScale = 0.75
+			}
+			st.WindTarget = (-0.6 + rand.Float64()*1.2) * rangeScale
 		}
 	}
 }
@@ -399,8 +419,14 @@ func (st *State) updateRain() {
 			p.Splash--
 			continue
 		}
-		p.VX = st.Wind * 0.4 * p.Weight
-		p.X += p.VX
+		gustScale := 0.18
+		if st.FocusMode {
+			gustScale = 0.12
+		}
+		gust := math.Sin(float64(st.Frame)*0.045+float64(i)*0.21+p.Y*0.03) * gustScale
+		localWind := st.Wind + gust*(0.4+st.StormIntensity*0.8)
+		p.VX = localWind * (0.95 + p.Weight*0.35)
+		p.X += p.VX * mult
 		p.Y += p.VY * mult
 
 		if p.X < 0 {
@@ -431,6 +457,24 @@ func (st *State) updateRain() {
 	}
 }
 
+func rainGlyphForWind(vx float64) rune {
+	avx := math.Abs(vx)
+	switch {
+	case avx < 0.18:
+		return '|'
+	case avx < 0.45:
+		if vx >= 0 {
+			return '⟍'
+		}
+		return '⟋'
+	default:
+		if vx >= 0 {
+			return '\\'
+		}
+		return '/'
+	}
+}
+
 func (st *State) drawRain(screen tcell.Screen, splash bool) {
 	w, h := st.Width, st.Height
 	if w == 0 || h == 0 {
@@ -441,6 +485,9 @@ func (st *State) drawRain(screen tcell.Screen, splash bool) {
 	bottom := h - 1
 
 	for i := range st.Particles {
+		if st.FocusMode && i%3 == 0 {
+			continue
+		}
 		p := &st.Particles[i]
 		if !p.Active {
 			continue
@@ -463,22 +510,25 @@ func (st *State) drawRain(screen tcell.Screen, splash bool) {
 		if headX < 0 {
 			headX += w
 		}
+		headChar := rainGlyphForWind(p.VX)
 		for j := 1; j <= p.Len; j++ {
-			sy := headY - j
+			tx := p.X - p.VX*float64(j)*1.2
+			ty := p.Y - p.VY*float64(j)*0.95
+			sx := int(math.Round(tx))
+			sy := int(math.Round(ty))
 			if sy < 0 {
 				break
 			}
-			sx := headX - int(math.Round(float64(j)*p.VX*0.5))
 			sx = sx % w
 			if sx < 0 {
 				sx += w
 			}
 			if sx >= 0 && sx < w {
-				screen.SetContent(sx, sy, p.Char, nil, trailStyle)
+				screen.SetContent(sx, sy, headChar, nil, trailStyle)
 			}
 		}
 		if headX >= 0 && headX < w {
-			screen.SetContent(headX, headY, p.Char, nil, style)
+			screen.SetContent(headX, headY, headChar, nil, style)
 		}
 		if splash && headY >= bottom-1 {
 			screen.SetContent(headX, bottom, '~', nil, style)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"raind/modes"
@@ -23,14 +24,14 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "Usage: raind [options]\n\n")
 	fmt.Fprintf(os.Stderr, "Options:\n")
 	fmt.Fprintf(os.Stderr, "  --mode, -m <string>\n")
-	fmt.Fprintf(os.Stderr, "        weather mode: rain, thunder, snow, meteor (default \"rain\")\n")
+	fmt.Fprintf(os.Stderr, "        weather mode: rain, thunder, snow, meteor, auto (default \"rain\")\n")
 	fmt.Fprintf(os.Stderr, "  --color, -c <string>\n")
 	fmt.Fprintf(os.Stderr, "        drop color: black, red, green, yellow, blue, magenta, cyan, white (default \"cyan\")\n")
 	fmt.Fprintf(os.Stderr, "  --speed, -s <string>\n")
 	fmt.Fprintf(os.Stderr, "        animation speed: slow, medium, fast (default \"medium\")\n")
 	fmt.Fprintf(os.Stderr, "  --help, -h\n")
 	fmt.Fprintf(os.Stderr, "        show this help message\n")
-	fmt.Fprintf(os.Stderr, "\nRuntime keys: R/T/S/M modes, +/- speed, Q/Esc/Ctrl+C quit\n")
+	fmt.Fprintf(os.Stderr, "\nRuntime keys: R/T/S/M modes, A auto-cycle, Z focus mode, +/- speed, Q/Esc/Ctrl+C quit\n")
 }
 
 var shortFlags = map[string]string{
@@ -128,6 +129,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "raind: unknown mode %q\n", opts.mode)
 		os.Exit(2)
 	}
+	autoCycle := &atomic.Bool{}
+	if mode == modes.ModeAuto {
+		autoCycle.Store(true)
+		mode = modes.ModeRain
+	}
 	color, ok := modes.ParseColor(opts.color)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "raind: unknown color %q\n", opts.color)
@@ -174,8 +180,25 @@ func main() {
 	delay := time.Duration(modes.FrameDelay(state.Mode, state.Speed)) * time.Millisecond
 	ticker := time.NewTicker(delay)
 	defer ticker.Stop()
+	autoTicker := time.NewTicker(60 * time.Second)
+	defer autoTicker.Stop()
 
-	go pollEvents(screen, state, ticker, requestQuit)
+	go pollEvents(screen, state, ticker, autoCycle, requestQuit)
+	go func() {
+		for {
+			select {
+			case <-quit:
+				return
+			case <-autoTicker.C:
+				if !autoCycle.Load() {
+					continue
+				}
+				state.Mode = nextAutoMode(state.Mode)
+				initMode(state)
+				resetTicker(ticker, state)
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -220,7 +243,7 @@ func drawMode(screen tcell.Screen, st *modes.State) {
 	}
 }
 
-func pollEvents(screen tcell.Screen, state *modes.State, ticker *time.Ticker, quit func()) {
+func pollEvents(screen tcell.Screen, state *modes.State, ticker *time.Ticker, autoCycle *atomic.Bool, quit func()) {
 	for {
 		ev := screen.PollEvent()
 		switch e := ev.(type) {
@@ -254,6 +277,10 @@ func pollEvents(screen tcell.Screen, state *modes.State, ticker *time.Ticker, qu
 					state.Mode = modes.ModeMeteor
 					state.InitMeteor()
 					resetTicker(ticker, state)
+				case 'a', 'A':
+					autoCycle.Store(!autoCycle.Load())
+				case 'z', 'Z':
+					state.FocusMode = !state.FocusMode
 				case '+', '=':
 					bumpSpeed(state, 1)
 					resetTicker(ticker, state)
@@ -269,6 +296,19 @@ func pollEvents(screen tcell.Screen, state *modes.State, ticker *time.Ticker, qu
 			quit()
 			return
 		}
+	}
+}
+
+func nextAutoMode(current modes.Mode) modes.Mode {
+	switch current {
+	case modes.ModeRain:
+		return modes.ModeThunderstorm
+	case modes.ModeThunderstorm:
+		return modes.ModeSnow
+	case modes.ModeSnow:
+		return modes.ModeMeteor
+	default:
+		return modes.ModeRain
 	}
 }
 
