@@ -86,6 +86,45 @@ func (st *State) spawnMeteorShower() {
 	st.MeteorFlash = 3
 }
 
+func (st *State) spawnFireball() {
+	slot := -1
+	for i := range st.Meteors {
+		if !st.Meteors[i].Active {
+			slot = i
+			break
+		}
+	}
+	if slot < 0 {
+		return
+	}
+
+	w, h := st.Width, st.Height
+	if w <= 0 || h <= 0 {
+		return
+	}
+
+	fromLeft := rand.Intn(2) == 0
+	x := 0.0
+	vx := 2.5 + rand.Float64()
+	if !fromLeft {
+		x = float64(w - 1)
+		vx = -vx
+	}
+	y := rand.Float64() * float64(h/3+1)
+
+	st.Meteors[slot] = Meteor{
+		X:        x,
+		Y:        y,
+		VX:       vx,
+		VY:       0.1 + rand.Float64()*0.2,
+		Life:     w + 20,
+		MaxLife:  w + 20,
+		TrailLen: 18 + rand.Intn(5),
+		HeadChar: '◉',
+		Active:   true,
+	}
+}
+
 func (st *State) spawnSparks(x, y float64) {
 	n := 5 + rand.Intn(4)
 	for k := 0; k < n; k++ {
@@ -164,6 +203,11 @@ func DrawMeteor(screen tcell.Screen, st *State) {
 		st.spawnMeteor(-1, -1, false)
 	} else if rand.Float64() < 0.008 {
 		st.spawnMeteor(float64(rand.Intn(w)), -1, false)
+	}
+	st.MeteorFireballTimer--
+	if st.MeteorFireballTimer <= 0 {
+		st.spawnFireball()
+		st.MeteorFireballTimer = 400 + rand.Intn(300)
 	}
 
 	headStyle := meteorStyle(st.Color, false, true)
