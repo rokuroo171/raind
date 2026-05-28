@@ -157,7 +157,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	screen.SetStyle(tcell.StyleDefault.Background(tcell.ColorBlack))
+	screen.SetStyle(tcell.StyleDefault)
 	screen.Clear()
 	screen.Show()
 

@@ -161,7 +161,7 @@ func (st *State) drawLightning(screen tcell.Screen) {
 	}
 	boltStyle := tcell.StyleDefault.
 		Foreground(tcell.ColorWhite).
-		Background(tcell.ColorBlack).
+		Background(tcell.ColorReset).
 		Attributes(tcell.AttrBold)
 	haloStyle := tcell.StyleDefault.
 		Foreground(tcell.ColorBlack).
