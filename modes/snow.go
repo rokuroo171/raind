@@ -24,9 +24,9 @@ func DrawSnow(screen tcell.Screen, st *State) {
 	if st.FocusMode {
 		mult *= 0.85
 	}
-	style := tcell.StyleDefault.Foreground(st.Color).Background(tcell.ColorBlack)
-	accumStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack).Attributes(tcell.AttrDim)
-	accumTopStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack)
+	style := tcell.StyleDefault.Foreground(st.Color).Background(tcell.ColorReset)
+	accumStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+	accumTopStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset)
 
 	lightChars := []rune{'·', '∗', '❄', '✻'}
 	heavyChars := []rune{'|', '•'}
@@ -228,7 +228,7 @@ func drawAuroraSky(screen tcell.Screen, st *State) {
 			} else if phase < -0.2 {
 				color = tcell.ColorPurple
 			}
-			style := tcell.StyleDefault.Foreground(color).Background(tcell.ColorBlack).Attributes(tcell.AttrDim)
+			style := tcell.StyleDefault.Foreground(color).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
 			ch := '·'
 			if intensity > 0.75 && (x+st.Frame)%5 == 0 {
 				ch = '░'
@@ -254,9 +254,9 @@ func drawPine(screen tcell.Screen, st *State) {
 	}
 	startX := w - len(tree[0]) - 2
 	startY := h - len(tree) - 2
-	leafStyleDim := tcell.StyleDefault.Foreground(tcell.ColorGreen).Background(tcell.ColorBlack).Attributes(tcell.AttrDim)
-	leafStyle := tcell.StyleDefault.Foreground(tcell.ColorGreen).Background(tcell.ColorBlack)
-	trunkStyle := tcell.StyleDefault.Foreground(tcell.ColorMaroon).Background(tcell.ColorBlack).Attributes(tcell.AttrDim)
+	leafStyleDim := tcell.StyleDefault.Foreground(tcell.ColorGreen).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+	leafStyle := tcell.StyleDefault.Foreground(tcell.ColorGreen).Background(tcell.ColorReset)
+	trunkStyle := tcell.StyleDefault.Foreground(tcell.ColorMaroon).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
 
 	for y, row := range tree {
 		for x, ch := range row {

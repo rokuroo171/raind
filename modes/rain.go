@@ -349,7 +349,7 @@ func (st *State) Resize(w, h int) {
 }
 
 func rainStyle(color tcell.Color, dim bool) tcell.Style {
-	s := tcell.StyleDefault.Foreground(color).Background(tcell.ColorBlack)
+	s := tcell.StyleDefault.Foreground(color).Background(tcell.ColorReset)
 	if dim {
 		s = s.Attributes(tcell.AttrDim)
 	}
@@ -357,7 +357,7 @@ func rainStyle(color tcell.Color, dim bool) tcell.Style {
 }
 
 func meteorStyle(color tcell.Color, dim, bold bool) tcell.Style {
-	s := tcell.StyleDefault.Foreground(color).Background(tcell.ColorBlack)
+	s := tcell.StyleDefault.Foreground(color).Background(tcell.ColorReset)
 	var attr tcell.AttrMask
 	if dim {
 		attr |= tcell.AttrDim
