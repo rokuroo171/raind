@@ -2,9 +2,19 @@
 
 Terminal weather screensaver written in Go. Four modes: rain, thunder, snow, and meteor shower. Single static binary, no CGO, runs anywhere.
 
+## Preview
+
+| Rain | Thunderstorm |
+|------|-------------|
+| ![rain](assets/rain.gif) | ![thunderstorm](assets/thunderstorm.gif) |
+
+| Snow | Meteor |
+|------|--------|
+| ![snow](assets/snow.gif) | ![meteor](assets/meteor.gif) |
+
 ## Install
 
-Linux **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.1.0**:
+Linux/macOS **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.1.1**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rokuroo171/raind/main/install.sh | sh
@@ -23,10 +33,10 @@ Options:
 ```bash
 ./install.sh --from-source
 INSTALL_DIR=$HOME/.local/bin ./install.sh
-VERSION=0.1.0 ./install.sh
+VERSION=0.1.1 ./install.sh
 ```
 
-Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.1.0_linux_amd64.tar.gz`, `raind_0.1.0_linux_arm64.tar.gz`).
+Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.1.1_linux_amd64.tar.gz`, `raind_0.1.1_linux_arm64.tar.gz`, `raind_0.1.1_darwin_amd64.tar.gz`, `raind_0.1.1_darwin_arm64.tar.gz`).
 
 ## Build from source
 
@@ -59,6 +69,8 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o raind.exe
 | `T` | Thunder mode |
 | `S` | Snow mode |
 | `M` | Meteor shower mode |
+| `A` | Auto-cycle modes |
+| `Z` | Focus mode |
 | `+` / `=` | Increase speed |
 | `-` | Decrease speed |
 | `Q` / `Esc` / `Ctrl+C` | Quit |
@@ -90,7 +102,7 @@ raind -m shower -c white -s medium
 
 ## Packaging
 
-GoReleaser builds `linux-amd64`, `linux-arm64`, and `windows-amd64`.
+GoReleaser builds `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, and `windows-amd64`.
 
 ## License
 
