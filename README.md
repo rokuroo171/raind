@@ -102,7 +102,7 @@ raind -m shower -c white -s medium
 
 ## Packaging
 
-GoReleaser builds `linux-amd64`, `linux-arm64`, `darwin-amd64`, `darwin-arm64`, and `windows-amd64`.
+GoReleaser builds `linux-amd64`, `linux-arm64`, `darwin-amd64`, and `darwin-arm64`.
 
 ## License
 
