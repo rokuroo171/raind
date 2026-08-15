@@ -70,6 +70,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o raind.exe
 | `S` | Snow mode |
 | `M` | Meteor shower mode |
 | `A` | Auto-cycle modes |
+| `Z` | Focus mode |
 | `+` / `=` | Increase speed |
 | `-` | Decrease speed |
 | `Q` / `Esc` / `Ctrl+C` | Quit |
