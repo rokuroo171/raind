@@ -87,6 +87,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o raind.exe
 | `--city` | | Live weather for a named city (implies `--live`) |
 | `--world` | `coast` | Terrain: `coast` (default) or `city` |
 | `--help`, `-h` | | Show usage |
+| `--version`, `-v` | | Print version and exit |
 
 Mode aliases (also accepted by `--mode`):
 

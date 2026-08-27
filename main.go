@@ -13,6 +13,9 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// version is the release this binary was built from. Bump it on release
+const version = "0.2.0"
+
 type cliOptions struct {
 	mode  string
 	color string
@@ -40,6 +43,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "        terrain: coast (default) or city\n")
 	fmt.Fprintf(os.Stderr, "  --help, -h\n")
 	fmt.Fprintf(os.Stderr, "        show this help message\n")
+	fmt.Fprintf(os.Stderr, "  --version, -v\n")
+	fmt.Fprintf(os.Stderr, "        print version and exit\n")
 	fmt.Fprintf(os.Stderr, "\nRuntime keys: C/R/T/S/M modes, A auto-cycle, Z focus mode, +/- speed, Q/Esc/Ctrl+C quit\n")
 }
 
@@ -64,6 +69,10 @@ func parseCLI(args []string) (cliOptions, error) {
 		}
 		if name == "help" {
 			printUsage()
+			os.Exit(0)
+		}
+		if name == "version" {
+			fmt.Printf("raind %s\n", version)
 			os.Exit(0)
 		}
 		if !hasValue {
@@ -118,6 +127,9 @@ func parseFlag(arg string) (name, value string, hasValue bool, err error) {
 	raw, value, hasValue := splitFlagBody(body)
 	if raw == "h" || raw == "help" {
 		return "help", "", false, nil
+	}
+	if raw == "v" {
+		return "version", "", false, nil
 	}
 	long, ok := shortFlags[raw]
 	if !ok {
