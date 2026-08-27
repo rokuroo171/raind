@@ -106,4 +106,4 @@ GoReleaser builds `linux-amd64`, `linux-arm64`, `darwin-amd64`, and `darwin-arm6
 
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -32,6 +32,7 @@ feat: add city skyline to snow mode
 fix: clamp meteor speed on small terminals
 docs: list the new --city flag
 test: cover FrameDelay speed scaling
+chore: bump GoReleaser config for v0.2.0
 ```
 
 Write the subject in the imperative, keep it under about 70 characters, and save details for the body. One commit per self contained change. Avoid bundling several unrelated edits into one commit, it makes a bad history to search later.
@@ -44,7 +45,7 @@ Comments should explain why, not restate what the code says. A comment like "inc
 
 ## Testing
 
-There are no tests today, which is a known gap. If your change touches one of the pure functions (mode parsing, frame delay, speed scaling), add a table test alongside it. Run the suite with `go test ./...` before opening the PR.
+Tests live in the modes package, one file per mode or system. If your change touches one of the pure functions (mode parsing, frame delay, speed scaling, weather decoding), add a table test alongside it. Run the suite with `go test ./...` before opening the PR.
 
 ## Pull requests
 
