@@ -3,7 +3,7 @@
 set -eu
 (set -o pipefail) 2>/dev/null && set -o pipefail
 
-VERSION="${VERSION:-0.1.1}"
+VERSION="${VERSION:-0.2.0}"
 REPO="rokuroo171/raind"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 FROM_SOURCE="${FROM_SOURCE:-0}"

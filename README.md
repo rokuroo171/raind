@@ -14,7 +14,7 @@ Terminal weather screensaver written in Go. Four modes: rain, thunder, snow, and
 
 ## Install
 
-Linux/macOS **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.1.1**:
+Linux/macOS **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.2.0**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rokuroo171/raind/main/install.sh | sh
@@ -33,10 +33,10 @@ Options:
 ```bash
 ./install.sh --from-source
 INSTALL_DIR=$HOME/.local/bin ./install.sh
-VERSION=0.1.1 ./install.sh
+VERSION=0.2.0 ./install.sh
 ```
 
-Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.1.1_linux_amd64.tar.gz`, `raind_0.1.1_linux_arm64.tar.gz`, `raind_0.1.1_darwin_amd64.tar.gz`, `raind_0.1.1_darwin_arm64.tar.gz`).
+Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.2.0_linux_amd64.tar.gz`, `raind_0.2.0_linux_arm64.tar.gz`, `raind_0.2.0_darwin_amd64.tar.gz`, `raind_0.2.0_darwin_arm64.tar.gz`).
 
 ## Build from source
 
@@ -66,6 +66,7 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o raind.exe
 | Key | Action |
 |-----|--------|
 | `R` | Rain mode |
+| `C` | Calm scene (clouds, sun, moon over the coastline) |
 | `T` | Thunder mode |
 | `S` | Snow mode |
 | `M` | Meteor shower mode |
@@ -79,9 +80,12 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o raind.exe
 
 | Flag | Default | Values |
 |------|---------|--------|
-| `--mode`, `-m` | `rain` | `rain`, `thunder`, `snow`, `meteor` |
+| `--mode`, `-m` | `rain` | `rain`, `thunder`, `snow`, `meteor`, `auto` |
 | `--color`, `-c` | `cyan` | `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white` |
 | `--speed`, `-s` | `medium` | `slow`, `medium`, `fast` |
+| `--live`, `-l` | off | Live weather from Open-Meteo for your location |
+| `--city` | | Live weather for a named city (implies `--live`) |
+| `--world` | `coast` | Terrain: `coast` (default) or `city` |
 | `--help`, `-h` | | Show usage |
 
 Mode aliases (also accepted by `--mode`):
@@ -98,6 +102,7 @@ raind --mode snow --color white --speed slow
 raind --mode thunder --speed fast
 raind --mode meteor --color yellow --speed fast
 raind -m shower -c white -s medium
+raind --live --world coast
 ```
 
 ## Packaging
