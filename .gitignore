@@ -5,3 +5,5 @@
 *.tar.gz
 *.zip
 dist/
+
+result
