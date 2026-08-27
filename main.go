@@ -17,6 +17,9 @@ type cliOptions struct {
 	mode  string
 	color string
 	speed string
+	city  string
+	live  bool
+	world string
 }
 
 func printUsage() {
@@ -29,15 +32,22 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "        drop color: black, red, green, yellow, blue, magenta, cyan, white (default \"cyan\")\n")
 	fmt.Fprintf(os.Stderr, "  --speed, -s <string>\n")
 	fmt.Fprintf(os.Stderr, "        animation speed: slow, medium, fast (default \"medium\")\n")
+	fmt.Fprintf(os.Stderr, "  --live, -l\n")
+	fmt.Fprintf(os.Stderr, "        live weather for your location (Open-Meteo, no key needed)\n")
+	fmt.Fprintf(os.Stderr, "  --city <name>\n")
+	fmt.Fprintf(os.Stderr, "        live weather for a named city (implies --live)\n")
+	fmt.Fprintf(os.Stderr, "  --world <name>\n")
+	fmt.Fprintf(os.Stderr, "        terrain: coast (default) or city\n")
 	fmt.Fprintf(os.Stderr, "  --help, -h\n")
 	fmt.Fprintf(os.Stderr, "        show this help message\n")
-	fmt.Fprintf(os.Stderr, "\nRuntime keys: R/T/S/M modes, A auto-cycle, Z focus mode, +/- speed, Q/Esc/Ctrl+C quit\n")
+	fmt.Fprintf(os.Stderr, "\nRuntime keys: C/R/T/S/M modes, A auto-cycle, Z focus mode, +/- speed, Q/Esc/Ctrl+C quit\n")
 }
 
 var shortFlags = map[string]string{
 	"m": "mode",
 	"c": "color",
 	"s": "speed",
+	"l": "live",
 }
 
 func parseCLI(args []string) (cliOptions, error) {
@@ -70,6 +80,12 @@ func parseCLI(args []string) (cliOptions, error) {
 			opts.color = value
 		case "speed":
 			opts.speed = value
+		case "live":
+			opts.live = true
+		case "city":
+			opts.city = value
+		case "world":
+			opts.world = value
 		default:
 			return opts, fmt.Errorf("raind: unknown flag %s", flagLabel(name))
 		}
@@ -139,6 +155,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "raind: unknown color %q\n", opts.color)
 		os.Exit(2)
 	}
+	world := modes.WorldCoast
+	if opts.world != "" {
+		if opts.world == "city" {
+			world = modes.WorldCity
+		} else if opts.world != "coast" {
+			fmt.Fprintf(os.Stderr, "raind: unknown world %q\n", opts.world)
+			os.Exit(2)
+		}
+	}
 	speed, ok := modes.ParseSpeed(opts.speed)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "raind: unknown speed %q\n", opts.speed)
@@ -168,8 +193,10 @@ func main() {
 		Mode:   mode,
 		Speed:  speed,
 		Color:  color,
+		World:  world,
 	}
 	initMode(state)
+	state.InitWorld()
 
 	quit := make(chan struct{})
 	var closeQuit sync.Once
@@ -182,6 +209,13 @@ func main() {
 	defer ticker.Stop()
 	autoTicker := time.NewTicker(60 * time.Second)
 	defer autoTicker.Stop()
+
+	live := opts.live || opts.city != ""
+	state.WeatherLive = live
+	weatherCh := make(chan modes.WeatherData, 1)
+	if live {
+		go runWeatherLoop(opts.city, weatherCh)
+	}
 
 	go pollEvents(screen, state, ticker, autoCycle, requestQuit)
 	go func() {
@@ -204,6 +238,8 @@ func main() {
 		select {
 		case <-quit:
 			return
+		case wd := <-weatherCh:
+			applyWeather(state, wd, live, ticker)
 		case <-ticker.C:
 			w, h := screen.Size()
 			if w != state.Width || h != state.Height {
@@ -217,6 +253,35 @@ func main() {
 	}
 }
 
+// runWeatherLoop fetches live weather immediately, then refreshes every 30
+// minutes. Failed fetches retry sooner so the sky can recover while raind
+// keeps running.
+func runWeatherLoop(city string, ch chan<- modes.WeatherData) {
+	for {
+		wd := modes.FetchWeatherForCity(city)
+		ch <- wd
+		wait := 30 * time.Minute
+		if wd.Offline {
+			wait = 5 * time.Minute
+		}
+		time.Sleep(wait)
+	}
+}
+
+// applyWeather stores the snapshot and, in live mode, switches the scene to
+// match the condition. The mode switch goes through the main loop so it
+// never races the renderer.
+func applyWeather(st *modes.State, wd modes.WeatherData, live bool, ticker *time.Ticker) {
+	st.Weather = wd
+	if !live {
+		return
+	}
+	st.Mode = modes.ModeForWeather(wd.Condition)
+	st.Intensity = wd.Intensity()
+	initMode(st)
+	resetTicker(ticker, st)
+}
+
 func initMode(st *modes.State) {
 	switch st.Mode {
 	case modes.ModeThunderstorm:
@@ -225,13 +290,18 @@ func initMode(st *modes.State) {
 		st.InitSnow()
 	case modes.ModeMeteor:
 		st.InitMeteor()
+	case modes.ModeCalm:
+		st.InitCalm()
 	default:
 		st.InitRain()
 	}
 }
 
 func drawMode(screen tcell.Screen, st *modes.State) {
+	modes.DrawWorldSky(screen, st)
 	switch st.Mode {
+	case modes.ModeCalm:
+		// the world alone is the scene
 	case modes.ModeThunderstorm:
 		modes.DrawThunderstorm(screen, st)
 	case modes.ModeSnow:
@@ -240,6 +310,11 @@ func drawMode(screen tcell.Screen, st *modes.State) {
 		modes.DrawMeteor(screen, st)
 	default:
 		modes.Draw(screen, st)
+	}
+	modes.DrawCity(screen, st)
+	modes.DrawSplashes(screen, st)
+	if st.Mode == modes.ModeSnow {
+		modes.DrawSnowForeground(screen, st)
 	}
 }
 
@@ -277,6 +352,10 @@ func pollEvents(screen tcell.Screen, state *modes.State, ticker *time.Ticker, au
 					state.Mode = modes.ModeMeteor
 					state.InitMeteor()
 					resetTicker(ticker, state)
+				case 'c', 'C':
+					state.Mode = modes.ModeCalm
+					state.InitCalm()
+					resetTicker(ticker, state)
 				case 'a', 'A':
 					autoCycle.Store(!autoCycle.Load())
 				case 'z', 'Z':
@@ -307,6 +386,8 @@ func nextAutoMode(current modes.Mode) modes.Mode {
 		return modes.ModeSnow
 	case modes.ModeSnow:
 		return modes.ModeMeteor
+	case modes.ModeMeteor:
+		return modes.ModeCalm
 	default:
 		return modes.ModeRain
 	}

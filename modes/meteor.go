@@ -110,7 +110,13 @@ func (st *State) spawnFireball() {
 		x = float64(w - 1)
 		vx = -vx
 	}
-	y := rand.Float64() * float64(h/3+1)
+	// Fireballs fly across the upper sky and burn out before the horizon,
+	// so they never streak through the buildings or onto the road.
+	burnupY := st.City.HorizonY - 3
+	y := rand.Float64() * float64(burnupY/2+1)
+	if y >= float64(burnupY) {
+		y = float64(burnupY - 1)
+	}
 
 	st.Meteors[slot] = Meteor{
 		X:        x,
@@ -228,6 +234,20 @@ func DrawMeteor(screen tcell.Screen, st *State) {
 		headX := int(math.Round(m.X))
 		headY := int(math.Round(m.Y))
 
+		// Meteors burn up in the atmosphere before reaching the skyline,
+		// so they never streak into the city or the street.
+		burnupY := st.City.HorizonY - 3
+		if burnupY < 1 {
+			burnupY = 1
+		}
+		if headY >= burnupY {
+			if headX >= 0 && headX < w {
+				st.spawnSparks(m.X, m.Y)
+			}
+			m.Active = false
+			continue
+		}
+
 		for j := m.TrailLen; j >= 1; j-- {
 			t := float64(j) / float64(m.TrailLen)
 			tx := m.X - m.VX*float64(j)*0.92
@@ -261,7 +281,7 @@ func DrawMeteor(screen tcell.Screen, st *State) {
 			screen.SetContent(headX, headY, m.HeadChar, nil, headStyle)
 		}
 
-		off := headX < -4 || headX > w+4 || headY < -4 || headY > h+4
+		off := headX < -4 || headX > w+4 || headY < -4
 		if m.Life <= 0 || off {
 			if headX >= 0 && headX < w && headY >= 0 && headY < h {
 				st.spawnSparks(m.X, m.Y)
@@ -277,8 +297,12 @@ func DrawMeteor(screen tcell.Screen, st *State) {
 		}
 		sx := int(math.Round(sp.X))
 		sy := int(math.Round(sp.Y))
-		if sx >= 0 && sx < w && sy >= 0 && sy < h {
-			screen.SetContent(sx, sy, sp.Char, nil, sparkStyle)
+		// Keep the explosion above the skyline so sparks never rain into
+		// the city or onto the road.
+		if sy < st.City.HorizonY-3 {
+			if sx >= 0 && sx < w && sy >= 0 && sy < h {
+				screen.SetContent(sx, sy, sp.Char, nil, sparkStyle)
+			}
 		}
 		sp.X += sp.VX * mult
 		sp.Y += sp.VY * mult

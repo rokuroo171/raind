@@ -25,8 +25,6 @@ func DrawSnow(screen tcell.Screen, st *State) {
 		mult *= 0.85
 	}
 	style := tcell.StyleDefault.Foreground(st.Color).Background(tcell.ColorReset)
-	accumStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
-	accumTopStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset)
 
 	lightChars := []rune{'·', '∗', '❄', '✻'}
 	heavyChars := []rune{'|', '•'}
@@ -40,28 +38,6 @@ func DrawSnow(screen tcell.Screen, st *State) {
 	}
 
 	drawAuroraSky(screen, st)
-	for x := 0; x < w; x++ {
-		height := st.AccumRow[x]
-		if height > maxAccum {
-			height = maxAccum
-			st.AccumRow[x] = height
-		}
-		for k := 0; k < height; k++ {
-			y := h - 1 - k
-			if y < 0 {
-				break
-			}
-			ch := '·'
-			style := accumStyle
-			if k == height-1 {
-				ch = '▁'
-				style = accumTopStyle
-			} else if k >= height-2 {
-				ch = '▄'
-			}
-			screen.SetContent(x, y, ch, nil, style)
-		}
-	}
 
 	resetFlake := func(f *Snowflake) {
 		f.Y = 0
@@ -82,6 +58,17 @@ func DrawSnow(screen tcell.Screen, st *State) {
 
 	depositSnow := func(col int) {
 		if w == 0 {
+			return
+		}
+		// On the coast snow fades into the sea; only the lighthouse rock
+		// catches any, capped at a thin dusting.
+		if st.World == WorldCoast {
+			if col < st.Coast.LighthouseX-2 || col > st.Coast.LighthouseX+2 {
+				return
+			}
+			if st.AccumRow[col] < 3 {
+				st.AccumRow[col]++
+			}
 			return
 		}
 		best := col
@@ -179,7 +166,47 @@ func DrawSnow(screen tcell.Screen, st *State) {
 		}
 	}
 	smoothAccum()
-	drawPine(screen, st)
+}
+
+// DrawSnowForeground renders the accumulated snow and the pine tree on top
+// of the city, since DrawSnow draws only the falling flakes behind it.
+func DrawSnowForeground(screen tcell.Screen, st *State) {
+	w, h := st.Width, st.Height
+	if w == 0 || h == 0 {
+		return
+	}
+	accumStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+	accumTopStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset)
+	maxAccum := h / 6
+	if maxAccum < 1 {
+		maxAccum = 1
+	}
+
+	for x := 0; x < w; x++ {
+		height := st.AccumRow[x]
+		if height > maxAccum {
+			height = maxAccum
+			st.AccumRow[x] = height
+		}
+		for k := 0; k < height; k++ {
+			y := h - 1 - k
+			if y < 0 {
+				break
+			}
+			ch := '·'
+			style := accumStyle
+			if k == height-1 {
+				ch = '▁'
+				style = accumTopStyle
+			} else if k >= height-2 {
+				ch = '▄'
+			}
+			screen.SetContent(x, y, ch, nil, style)
+		}
+	}
+	if st.World == WorldCity {
+		drawPine(screen, st)
+	}
 }
 
 func drawAuroraSky(screen tcell.Screen, st *State) {

@@ -14,6 +14,7 @@ const (
 	ModeThunderstorm
 	ModeSnow
 	ModeMeteor
+	ModeCalm
 	ModeAuto
 )
 
@@ -33,6 +34,7 @@ type Particle struct {
 	Char       rune
 	Active     bool
 	Splash     int
+	SplashY    int
 	SplashChar rune
 }
 
@@ -109,6 +111,20 @@ type State struct {
 	MeteorFlash         int
 	MeteorShowerTimer   int
 	MeteorFireballTimer int
+
+	// world
+	World   WorldKind
+	Coast   CoastScene
+	Seed    int64
+	City    Skyline
+	Night   float64
+	Clouds  []Cloud
+	RoofTop []int
+
+	// live weather
+	Weather     WeatherData
+	WeatherLive bool
+	Intensity   float64
 }
 
 var rainChars = []rune{'|', ':', '·', '′', '¦'}
@@ -124,6 +140,8 @@ func ParseMode(s string) (Mode, bool) {
 		return ModeSnow, true
 	case "meteor", "meteors", "shooting", "shower":
 		return ModeMeteor, true
+	case "calm", "clear", "sunny", "fair":
+		return ModeCalm, true
 	case "auto":
 		return ModeAuto, true
 	default:
@@ -189,6 +207,8 @@ func FrameDelay(mode Mode, speed SpeedLevel) int {
 		base = 80
 	case ModeMeteor:
 		base = 35
+	case ModeCalm:
+		base = 100
 	}
 	switch speed {
 	case SpeedSlow:
@@ -346,6 +366,14 @@ func (st *State) Resize(w, h int) {
 	case ModeMeteor:
 		st.initMeteors()
 	}
+	if st.Seed != 0 {
+		st.City = NewSkyline(st.Seed, w, h)
+		if st.World == WorldCoast {
+			st.initCoast(w, h)
+		}
+		st.initClouds()
+		st.updateRooftops()
+	}
 }
 
 func rainStyle(color tcell.Color, dim bool) tcell.Style {
@@ -436,25 +464,41 @@ func (st *State) updateRain() {
 			p.X -= w
 		}
 
+		if roof := st.roofAt(int(p.X)); roof >= 0 && p.Y >= float64(roof) {
+			st.splashAt(p, roof)
+			continue
+		}
 		if p.Y >= float64(st.Height) {
-			p.Splash = 2
-			if p.SplashChar == 0 {
-				p.SplashChar = '~'
-			} else if p.SplashChar == '~' {
-				p.SplashChar = '∿'
-			} else {
-				p.SplashChar = '~'
-			}
-			p.Y = 0
-			p.X = float64(rand.Intn(st.Width))
-			wgt := randomParticleWeight()
-			np := particleFromWeight(wgt)
-			p.Weight = np.Weight
-			p.VY = np.VY
-			p.Len = np.Len
-			p.Char = np.Char
+			st.splashAt(p, st.Height-1)
 		}
 	}
+}
+
+func (st *State) roofAt(x int) int {
+	if st.RoofTop != nil && x >= 0 && x < len(st.RoofTop) {
+		return st.RoofTop[x]
+	}
+	return -1
+}
+
+func (st *State) splashAt(p *Particle, y int) {
+	p.Splash = 2
+	if p.SplashChar == 0 {
+		p.SplashChar = '~'
+	} else if p.SplashChar == '~' {
+		p.SplashChar = '∿'
+	} else {
+		p.SplashChar = '~'
+	}
+	p.SplashY = y
+	p.Y = 0
+	p.X = float64(rand.Intn(st.Width))
+	wgt := randomParticleWeight()
+	np := particleFromWeight(wgt)
+	p.Weight = np.Weight
+	p.VY = np.VY
+	p.Len = np.Len
+	p.Char = np.Char
 }
 
 func rainGlyphForWind(vx float64) rune {
@@ -475,14 +519,13 @@ func rainGlyphForWind(vx float64) rune {
 	}
 }
 
-func (st *State) drawRain(screen tcell.Screen, splash bool) {
+func (st *State) drawRain(screen tcell.Screen) {
 	w, h := st.Width, st.Height
 	if w == 0 || h == 0 {
 		return
 	}
 	style := rainStyle(st.Color, false)
 	trailStyle := rainStyle(st.Color, true)
-	bottom := h - 1
 
 	for i := range st.Particles {
 		if st.FocusMode && i%3 == 0 {
@@ -490,16 +533,6 @@ func (st *State) drawRain(screen tcell.Screen, splash bool) {
 		}
 		p := &st.Particles[i]
 		if !p.Active {
-			continue
-		}
-		if p.Splash > 0 && splash {
-			sx := int(p.X) % w
-			if sx < 0 {
-				sx += w
-			}
-			if sx >= 0 && sx < w {
-				screen.SetContent(sx, bottom, p.SplashChar, nil, style)
-			}
 			continue
 		}
 		headY := int(p.Y)
@@ -530,15 +563,56 @@ func (st *State) drawRain(screen tcell.Screen, splash bool) {
 		if headX >= 0 && headX < w {
 			screen.SetContent(headX, headY, headChar, nil, style)
 		}
-		if splash && headY >= bottom-1 {
-			screen.SetContent(headX, bottom, '~', nil, style)
+	}
+}
+
+// DrawSplashes renders puddle ripples on top of the ground. It runs after
+// DrawCity so splashes stay visible in rain and thunder modes.
+func DrawSplashes(screen tcell.Screen, st *State) {
+	w, h := st.Width, st.Height
+	if w == 0 || h == 0 {
+		return
+	}
+	style := rainStyle(st.Color, false)
+	bottom := h - 1
+
+	for i := range st.Particles {
+		if st.FocusMode && i%3 == 0 {
+			continue
+		}
+		p := &st.Particles[i]
+		if !p.Active {
+			continue
+		}
+		if p.Splash > 0 {
+			sx := int(p.X) % w
+			if sx < 0 {
+				sx += w
+			}
+			sy := p.SplashY
+			if sy < 0 || sy >= h {
+				sy = bottom
+			}
+			if sx >= 0 && sx < w {
+				screen.SetContent(sx, sy, p.SplashChar, nil, style)
+			}
+			continue
+		}
+		if int(p.Y) >= bottom-1 {
+			sx := int(p.X) % w
+			if sx < 0 {
+				sx += w
+			}
+			if sx >= 0 && sx < w {
+				screen.SetContent(sx, bottom, '~', nil, style)
+			}
 		}
 	}
 }
 
 func Draw(screen tcell.Screen, st *State) {
 	st.updateRain()
-	st.drawRain(screen, true)
+	st.drawRain(screen)
 }
 
 func (st *State) InitRain() {
@@ -547,5 +621,14 @@ func (st *State) InitRain() {
 	st.WindTarget = 0
 	st.WindTick = 0
 	st.Bolts = nil
-	st.initParticles(0.35)
+	st.initParticles(0.35 + st.Intensity*0.35)
+}
+
+// InitCalm clears the weather particles so the world alone is the scene.
+func (st *State) InitCalm() {
+	st.Particles = nil
+	st.Bolts = nil
+	st.Wind = 0
+	st.WindTarget = 0
+	st.WindTick = 0
 }

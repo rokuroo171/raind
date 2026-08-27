@@ -50,7 +50,7 @@ func DrawThunderstorm(screen tcell.Screen, st *State) {
 	st.drawLightning(screen)
 	st.updateRain()
 	st.drawThunderDepthLayer(screen)
-	st.drawRain(screen, true)
+	st.drawRain(screen)
 }
 
 func (st *State) drawThunderDepthLayer(screen tcell.Screen) {
@@ -94,14 +94,42 @@ func (st *State) spawnLightning() {
 		nBolts = 2
 	}
 	frames := 3 + rand.Intn(3)
+	// Aim the branch at the tallest structure: the lighthouse on the coast,
+	// the hero tower in the city. Occasional bolts stay random for variety.
+	aim := -1
+	stop := -1
+	if st.World == WorldCoast {
+		aim = st.Coast.LighthouseX
+		stop = st.City.HorizonY - 1 - st.Coast.LighthouseH
+		if stop < 2 {
+			stop = st.City.HorizonY - 1
+		}
+	} else if len(st.City.Buildings) > 0 && st.City.Tallest >= 0 {
+		b := st.City.Buildings[st.City.Tallest]
+		aim = b.X + b.W/2
+		stop = st.City.HorizonY - 1 - b.H
+	}
 	for b := 0; b < nBolts; b++ {
-		st.Bolts = append(st.Bolts, st.generateBolt(w, h, frames))
+		a, s := aim, stop
+		if rand.Float64() < 0.25 {
+			a, s = -1, -1
+		}
+		st.Bolts = append(st.Bolts, st.generateBolt(w, h, frames, a, s))
 	}
 	st.StormFlash = frames
 }
 
-func (st *State) generateBolt(w, h, frames int) BoltStrike {
-	x := rand.Intn(w)
+func (st *State) generateBolt(w, h, frames, aimX, stopY int) BoltStrike {
+	if aimX < 0 {
+		aimX = rand.Intn(w)
+	}
+	if stopY < 2 {
+		stopY = h - 1
+		if st.City.HorizonY > 1 {
+			stopY = st.City.HorizonY - 1
+		}
+	}
+	x := aimX
 	y := 0
 	dir := 0 // -1 left, 0 down, 1 right
 	var points []BoltPoint
@@ -110,7 +138,7 @@ func (st *State) generateBolt(w, h, frames int) BoltStrike {
 		{0, -1}: '/', {0, 1}: '\\',
 		{1, -1}: '┌', {1, 0}: '┐', {1, 1}: '┘',
 	}
-	for y < h-1 {
+	for y < stopY {
 		ch := '|'
 		if len(points) > 0 {
 			prev := points[len(points)-1]
@@ -126,10 +154,15 @@ func (st *State) generateBolt(w, h, frames int) BoltStrike {
 		}
 		points = append(points, BoltPoint{X: x, Y: y, Char: ch})
 
-		// weighted step: continue direction more often
+		// pull the bolt back toward the target column, then random-walk
+		dx := aimX - x
 		roll := rand.Float64()
 		nextDir := dir
-		if roll < 0.2 {
+		if dx > 1 && roll < 0.5 {
+			nextDir = 1
+		} else if dx < -1 && roll >= 0.5 {
+			nextDir = -1
+		} else if roll < 0.2 {
 			nextDir = -1
 		} else if roll < 0.4 {
 			nextDir = 1
@@ -203,7 +236,7 @@ func (st *State) drawLightning(screen tcell.Screen) {
 }
 
 func (st *State) InitThunderstorm() {
-	st.StormIntensity = 0.1
+	st.StormIntensity = 0.1 + st.Intensity*0.9
 	st.Wind = 0
 	st.WindTarget = -0.9 + rand.Float64()*1.8
 	st.WindTick = 0
