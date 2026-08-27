@@ -80,6 +80,25 @@ func TestLiveEndpoints(t *testing.T) {
 	t.Logf("ip city=%q condition=%v temp=%.1f\n", city, wd.Condition, wd.Temperature)
 }
 
+func TestWindVectorDirection(t *testing.T) {
+	// wind from the west (270) blows toward the east, positive x
+	if vx, ok := (WeatherData{WindSpeed: 20, WindDirection: 270}).WindVector(); !ok || vx <= 0 {
+		t.Errorf("west wind should drift right, got %v ok=%v", vx, ok)
+	}
+	// wind from the east (90) blows toward the west, negative x
+	if vx, ok := (WeatherData{WindSpeed: 20, WindDirection: 90}).WindVector(); !ok || vx >= 0 {
+		t.Errorf("east wind should drift left, got %v ok=%v", vx, ok)
+	}
+	// calm air reports no wind
+	if _, ok := (WeatherData{WindSpeed: 0}).WindVector(); ok {
+		t.Error("zero wind should return ok=false")
+	}
+	// north-south wind has no horizontal drift
+	if vx, ok := (WeatherData{WindSpeed: 30, WindDirection: 0}).WindVector(); !ok || vx > 0.05 {
+		t.Errorf("north wind should be near zero drift, got %v", vx)
+	}
+}
+
 func TestIntensityStaysInRange(t *testing.T) {
 	conds := []Condition{CondClear, CondCloudy, CondRain, CondSnow, CondThunder}
 	for _, cond := range conds {

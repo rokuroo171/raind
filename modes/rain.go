@@ -26,12 +26,20 @@ const (
 	SpeedFast
 )
 
+// Plane is the depth layer a drop belongs to: 0 near, 1 mid, 2 far.
+const (
+	PlaneNear = iota
+	PlaneMid
+	PlaneFar
+)
+
 type Particle struct {
 	X, Y       float64
 	VX, VY     float64
 	Weight     float64
 	Len        int
 	Char       rune
+	Plane      int
 	Active     bool
 	Splash     int
 	SplashY    int
@@ -76,11 +84,26 @@ type BoltPoint struct {
 	Char rune
 }
 
+// BoltChannel is the ionized path of one strike: the main trunk plus side
+// branches, re-drawn for each stroke in the flash.
+type BoltChannel struct {
+	Points   []BoltPoint
+	Branches [][]BoltPoint
+}
+
 type BoltStrike struct {
-	Points     []BoltPoint
-	HaloPoints []BoltPoint
+	Channel    BoltChannel
 	FramesLeft int
+	StrokeGap  int
+	Strokes    int
 	HaloFrame  bool
+	Power      float64
+
+	// leader phase: a faint probe descends the channel in steps before the
+	// bright return strokes, only where the cell is close enough to see it
+	LeaderFrames int
+	LeaderLen    int
+	StrokeNum    int
 }
 
 type State struct {
@@ -94,15 +117,38 @@ type State struct {
 	// rain or thunderstorm
 	Wind           float64
 	WindTarget     float64
+	WindLive       bool
+	WindTargetLive float64
 	WindTick       int
+	GustX          float64
+	GustWidth      float64
+	GustStrength   float64
+	GustDir        float64
+	GustTimer      int
 	StormIntensity float64
 	Particles      []Particle
 	StormFlash     int
 	Bolts          []BoltStrike
 
+	// cloud flash: a strike that lights the cloud interior and never
+	// reaches ground, the storm's most common flash
+	CloudGlow  int
+	CloudGlowX int
+
+	// storm cells and cadence
+	CellPos           float64
+	CellDist          float64
+	CellDrift         float64
+	CellApproach      float64
+	BurstLeft         int
+	BurstTimer        int
+	LullTimer         int
+	BurstDoubleChance float64
+
 	// snow
-	Flakes   []Snowflake
-	AccumRow []int
+	Flakes    []Snowflake
+	AccumRow  []int
+	RoofAccum []int
 
 	// meteor
 	Meteors             []Meteor
@@ -111,6 +157,16 @@ type State struct {
 	MeteorFlash         int
 	MeteorShowerTimer   int
 	MeteorFireballTimer int
+
+	// the radiant: every trail points back at this drifting point, the
+	// perspective origin that makes the shower read as deep space
+	RadiantX     float64
+	RadiantY     float64
+	RadiantDrift float64
+
+	// bolide: a rare heavy meteor whose trail tints the sky for a moment
+	BolideFlash  int
+	BolideChance float64
 
 	// world
 	World   WorldKind
@@ -222,101 +278,91 @@ func FrameDelay(mode Mode, speed SpeedLevel) int {
 	return base
 }
 
-func randomParticleWeight() float64 {
-	return 0.3 + rand.Float64()*0.7
+// planeParams gives the feel of one depth plane. Far drops are sparse, slow,
+// short, and near-vertical; near drops are the opposite and lean with the wind.
+func planeParams(plane int) (vyMin, vyMax float64, maxLen int, windFactor, weightMin, weightMax float64) {
+	switch plane {
+	case PlaneNear:
+		return 0.9, 1.6, 4, 1.3, 0.6, 1.0
+	case PlaneMid:
+		return 0.55, 1.0, 2, 0.8, 0.3, 0.7
+	default:
+		return 0.3, 0.6, 1, 0.25, 0.1, 0.4
+	}
 }
 
-func particleFromWeight(w float64) Particle {
-	vy := 0.4 + w*0.6
+func particleForPlane(plane int) Particle {
+	vyMin, vyMax, maxLen, _, wMin, wMax := planeParams(plane)
+	w := wMin + rand.Float64()*(wMax-wMin)
 	return Particle{
 		Weight: w,
-		VY:     vy,
-		Len:    1 + int(w*3),
+		VY:     vyMin + rand.Float64()*(vyMax-vyMin),
+		Len:    1 + rand.Intn(maxLen),
 		Char:   rainChars[rand.Intn(len(rainChars))],
+		Plane:  plane,
 		Active: true,
 	}
 }
 
-func (st *State) initParticles(density float64) {
+// countsFor splits the particle budget across planes by intensity. Light rain
+// fills only the far plane, a downpour fills and weights the near plane.
+func (st *State) countsFor(intensity float64) (farN, midN, nearN, total int) {
+	w := st.Width
+	if w <= 0 {
+		return 0, 0, 0, 0
+	}
+	farN = int(float64(w) * (0.12 + intensity*0.18))
+	midN = int(float64(w) * intensity * 0.35)
+	nearN = int(float64(w) * intensity * 0.5)
+	total = farN + midN + nearN
+	if total < 1 {
+		farN, midN, nearN, total = 1, 0, 0, 1
+		return
+	}
+	maxN := w * st.Height / 4
+	if maxN < 1 {
+		maxN = 1
+	}
+	if total > maxN {
+		scale := float64(maxN) / float64(total)
+		farN = int(float64(farN) * scale)
+		midN = int(float64(midN) * scale)
+		nearN = int(float64(nearN) * scale)
+		total = farN + midN + nearN
+		if total < 1 {
+			farN, total = 1, 1
+		}
+	}
+	return
+}
+
+func (st *State) initParticles(intensity float64) {
 	if st.Width <= 0 || st.Height <= 0 {
 		st.Particles = nil
 		return
 	}
-	n := int(float64(st.Width) * density)
-	if n < 1 {
-		n = 1
-	}
-	maxN := st.Width * st.Height / 4
-	if maxN < 1 {
-		maxN = 1
-	}
-	if n > maxN {
-		n = maxN
-	}
-	particles := make([]Particle, n)
-	for i := range particles {
-		w := randomParticleWeight()
-		p := particleFromWeight(w)
-		p.X = float64(rand.Intn(st.Width))
-		p.Y = float64(rand.Intn(st.Height))
-		particles[i] = p
+	farN, midN, nearN, total := st.countsFor(intensity)
+	particles := make([]Particle, 0, total)
+	for _, n := range []struct {
+		count int
+		plane int
+	}{{farN, PlaneFar}, {midN, PlaneMid}, {nearN, PlaneNear}} {
+		for i := 0; i < n.count; i++ {
+			p := particleForPlane(n.plane)
+			p.X = float64(rand.Intn(st.Width))
+			p.Y = float64(rand.Intn(st.Height))
+			particles = append(particles, p)
+		}
 	}
 	st.Particles = particles
 }
 
-func (st *State) targetParticleCount(density float64) int {
+func (st *State) targetParticleCount(intensity float64) int {
 	if st.Width <= 0 {
 		return 0
 	}
-	n := int(float64(st.Width) * density)
-	if n < 1 {
-		n = 1
-	}
-	maxN := st.Width * st.Height / 4
-	if maxN < 1 {
-		maxN = 1
-	}
-	if n > maxN {
-		n = maxN
-	}
-	return n
-}
-
-func (st *State) initSnow() {
-	if st.Width <= 0 || st.Height <= 0 {
-		st.Flakes = nil
-		st.AccumRow = nil
-		return
-	}
-	st.AccumRow = make([]int, st.Width)
-	n := (st.Width * st.Height) / 120
-	if n < 8 {
-		n = 8
-	}
-	lightChars := []rune{'·', '∗', '❄', '✻'}
-	heavyChars := []rune{'|', '•'}
-	st.Flakes = make([]Snowflake, n)
-	for i := range st.Flakes {
-		w := 0.2 + rand.Float64()*0.8
-		var ch rune
-		if w > 0.7 {
-			ch = heavyChars[rand.Intn(len(heavyChars))]
-		} else if w < 0.4 {
-			ch = lightChars[rand.Intn(len(lightChars))]
-		} else {
-			all := append(append([]rune{}, lightChars...), heavyChars...)
-			ch = all[rand.Intn(len(all))]
-		}
-		st.Flakes[i] = Snowflake{
-			X:      float64(rand.Intn(st.Width)),
-			Y:      float64(rand.Intn(st.Height)),
-			Weight: w,
-			Speed:  0.08 + w*0.18,
-			Drift:  (rand.Float64() - 0.5) * (0.25 - w*0.15),
-			Char:   ch,
-			Active: true,
-		}
-	}
+	_, _, _, total := st.countsFor(intensity)
+	return total
 }
 
 func (st *State) initMeteors() {
@@ -345,6 +391,25 @@ func (st *State) initMeteors() {
 	st.MeteorFlash = 0
 	st.MeteorShowerTimer = 120 + rand.Intn(180)
 	st.MeteorFireballTimer = 400 + rand.Intn(300)
+	st.BolideFlash = 0
+	st.BolideChance = 0.18
+	// the radiant hangs high in the sky and slowly wanders
+	ry := st.City.HorizonY / 7
+	if ry < 3 {
+		ry = 3
+	}
+	if ry >= st.City.HorizonY-4 {
+		ry = st.City.HorizonY - 4
+	}
+	if ry < 1 {
+		ry = 1
+	}
+	st.RadiantY = float64(ry)
+	st.RadiantX = float64(st.Width)*0.3 + rand.Float64()*float64(st.Width)*0.4
+	st.RadiantDrift = 0.0006 + rand.Float64()*0.0009
+	if rand.Float64() < 0.5 {
+		st.RadiantDrift = -st.RadiantDrift
+	}
 }
 
 func (st *State) Resize(w, h int) {
@@ -357,10 +422,9 @@ func (st *State) Resize(w, h int) {
 	}
 	switch st.Mode {
 	case ModeThunderstorm:
-		density := 0.35 + st.StormIntensity*0.45
-		st.initParticles(density)
+		st.initParticles(st.StormIntensity)
 	case ModeRain:
-		st.initParticles(0.35)
+		st.initParticles(st.Intensity)
 	case ModeSnow:
 		st.initSnow()
 	case ModeMeteor:
@@ -399,7 +463,19 @@ func meteorStyle(color tcell.Color, dim, bold bool) tcell.Style {
 	return s
 }
 
+// updateWind eases the current wind toward its target. With live weather,
+// snapping to the OLD target would fight the gust system, so it eases
+// toward WindTargetLive instead. Without it, the target wanders on a timer
+// like before.
 func (st *State) updateWind() {
+	if st.WindLive {
+		diff := st.WindTargetLive - st.Wind
+		st.Wind += math.Copysign(0.002, diff)
+		if st.Wind >= st.WindTargetLive-0.002 && st.Wind <= st.WindTargetLive+0.002 {
+			st.Wind = st.WindTargetLive
+		}
+		return
+	}
 	if st.Wind < st.WindTarget {
 		st.Wind += 0.002
 		if st.Wind > st.WindTarget {
@@ -430,11 +506,36 @@ func (st *State) updateWind() {
 	}
 }
 
+// updateGust advances the rolling transverse gust band. The new band spawns
+// on the upwind edge and crosses the frame, so the whole field leans together
+// as it passes and relaxes behind it.
+func (st *State) updateGust() {
+	st.GustTimer--
+	if st.GustTimer <= 0 {
+		st.GustStrength = 0.5 + rand.Float64()*0.5
+		st.GustWidth = float64(st.Width) * (0.12 + rand.Float64()*0.18)
+		if st.GustWidth < 2 {
+			st.GustWidth = 2
+		}
+		if st.Wind >= 0 {
+			st.GustDir = 1
+			st.GustX = -st.GustWidth
+		} else {
+			st.GustDir = -1
+			st.GustX = float64(st.Width) + st.GustWidth
+		}
+		st.GustTimer = 300 + rand.Intn(300)
+		return
+	}
+	st.GustX += st.GustDir * 1.3
+}
+
 func (st *State) updateRain() {
 	if st.Width <= 0 || st.Height <= 0 {
 		return
 	}
 	st.updateWind()
+	st.updateGust()
 	mult := st.Speed.SpeedMultiplier()
 	w := float64(st.Width)
 
@@ -447,13 +548,11 @@ func (st *State) updateRain() {
 			p.Splash--
 			continue
 		}
-		gustScale := 0.18
-		if st.FocusMode {
-			gustScale = 0.12
-		}
-		gust := math.Sin(float64(st.Frame)*0.045+float64(i)*0.21+p.Y*0.03) * gustScale
-		localWind := st.Wind + gust*(0.4+st.StormIntensity*0.8)
-		p.VX = localWind * (0.95 + p.Weight*0.35)
+		_, _, _, windFactor, _, _ := planeParams(p.Plane)
+		// gust is a gaussian bump centered on the band, stronger in storms
+		dx := (p.X - st.GustX) / st.GustWidth
+		gust := st.GustStrength * math.Exp(-dx*dx*2) * (0.4 + st.StormIntensity*0.6)
+		p.VX = (st.Wind + gust) * (0.95 + p.Weight*0.35) * windFactor
 		p.X += p.VX * mult
 		p.Y += p.VY * mult
 
@@ -481,20 +580,36 @@ func (st *State) roofAt(x int) int {
 	return -1
 }
 
+// splashAt resolves a drop landing. Far drops wink out silently, mid drops
+// leave a faint dot, near drops throw the visible ripple.
 func (st *State) splashAt(p *Particle, y int) {
-	p.Splash = 2
-	if p.SplashChar == 0 {
-		p.SplashChar = '~'
-	} else if p.SplashChar == '~' {
-		p.SplashChar = '∿'
-	} else {
-		p.SplashChar = '~'
+	switch p.Plane {
+	case PlaneFar:
+		p.respawn(st)
+		return
+	case PlaneMid:
+		p.Splash = 1
+		p.SplashChar = '·'
+	default:
+		p.Splash = 2
+		if p.SplashChar == 0 {
+			p.SplashChar = '~'
+		} else if p.SplashChar == '~' {
+			p.SplashChar = '∿'
+		} else {
+			p.SplashChar = '~'
+		}
 	}
 	p.SplashY = y
+	p.respawn(st)
+}
+
+// respawn recycles the drop at the top of the screen with fresh parameters
+// for its plane, keeping depth zones stable.
+func (p *Particle) respawn(st *State) {
 	p.Y = 0
 	p.X = float64(rand.Intn(st.Width))
-	wgt := randomParticleWeight()
-	np := particleFromWeight(wgt)
+	np := particleForPlane(p.Plane)
 	p.Weight = np.Weight
 	p.VY = np.VY
 	p.Len = np.Len
@@ -525,7 +640,7 @@ func (st *State) drawRain(screen tcell.Screen) {
 		return
 	}
 	style := rainStyle(st.Color, false)
-	trailStyle := rainStyle(st.Color, true)
+	dimStyle := rainStyle(st.Color, true)
 
 	for i := range st.Particles {
 		if st.FocusMode && i%3 == 0 {
@@ -543,6 +658,12 @@ func (st *State) drawRain(screen tcell.Screen) {
 		if headX < 0 {
 			headX += w
 		}
+		// near drops render bright, mid and far drops recede into dim
+		hStyle := style
+		tStyle := dimStyle
+		if p.Plane == PlaneNear {
+			tStyle = rainStyle(st.Color, false)
+		}
 		headChar := rainGlyphForWind(p.VX)
 		for j := 1; j <= p.Len; j++ {
 			tx := p.X - p.VX*float64(j)*1.2
@@ -557,11 +678,11 @@ func (st *State) drawRain(screen tcell.Screen) {
 				sx += w
 			}
 			if sx >= 0 && sx < w {
-				screen.SetContent(sx, sy, headChar, nil, trailStyle)
+				screen.SetContent(sx, sy, headChar, nil, tStyle)
 			}
 		}
 		if headX >= 0 && headX < w {
-			screen.SetContent(headX, headY, headChar, nil, style)
+			screen.SetContent(headX, headY, headChar, nil, hStyle)
 		}
 	}
 }
@@ -584,6 +705,9 @@ func DrawSplashes(screen tcell.Screen, st *State) {
 		if !p.Active {
 			continue
 		}
+		if p.Plane == PlaneFar {
+			continue
+		}
 		if p.Splash > 0 {
 			sx := int(p.X) % w
 			if sx < 0 {
@@ -594,7 +718,11 @@ func DrawSplashes(screen tcell.Screen, st *State) {
 				sy = bottom
 			}
 			if sx >= 0 && sx < w {
-				screen.SetContent(sx, sy, p.SplashChar, nil, style)
+				spStyle := style
+				if p.SplashChar == '·' {
+					spStyle = rainStyle(st.Color, true)
+				}
+				screen.SetContent(sx, sy, p.SplashChar, nil, spStyle)
 			}
 			continue
 		}
@@ -620,8 +748,9 @@ func (st *State) InitRain() {
 	st.Wind = 0
 	st.WindTarget = 0
 	st.WindTick = 0
+	st.GustTimer = 120 + rand.Intn(120)
 	st.Bolts = nil
-	st.initParticles(0.35 + st.Intensity*0.35)
+	st.initParticles(st.Intensity)
 }
 
 // InitCalm clears the weather particles so the world alone is the scene.
@@ -631,4 +760,5 @@ func (st *State) InitCalm() {
 	st.Wind = 0
 	st.WindTarget = 0
 	st.WindTick = 0
+	st.GustTimer = 0
 }

@@ -3,6 +3,7 @@ package modes
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"time"
@@ -26,8 +27,23 @@ type WeatherData struct {
 	Condition     Condition
 	Temperature   float64
 	Precipitation float64
+	WindSpeed     float64
+	WindDirection float64
 	Offline       bool
 	FetchedAt     time.Time
+}
+
+// WindVector returns the horizontal drift the wind causes (1 is a full
+// screen-width lean, negative is left) and whether wind data exists.
+// wind_direction_10m is meteorological: the direction the wind comes FROM.
+func (wd WeatherData) WindVector() (vx float64, ok bool) {
+	if wd.WindSpeed <= 0 {
+		return 0, false
+	}
+	// blowing TOWARD dir+180, then rotate compass to math angle
+	a := (wd.WindDirection + 90) * math.Pi / 180
+	strength := min(1, wd.WindSpeed/30)
+	return math.Cos(a) * strength * 0.8, true
 }
 
 // Intensity maps the current precipitation to a 0-1 storm strength used to
@@ -138,6 +154,8 @@ type forecastCurrent struct {
 	Temperature   float64 `json:"temperature_2m"`
 	Precipitation float64 `json:"precipitation"`
 	WeatherCode   int     `json:"weather_code"`
+	WindSpeed     float64 `json:"wind_speed_10m"`
+	WindDirection float64 `json:"wind_direction_10m"`
 }
 
 type forecastResponse struct {
@@ -146,7 +164,7 @@ type forecastResponse struct {
 
 func fetchForecast(lat, lon float64) (WeatherData, error) {
 	u := fmt.Sprintf(
-		"https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,precipitation,weather_code",
+		"https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current=temperature_2m,precipitation,weather_code,wind_speed_10m,wind_direction_10m",
 		lat, lon)
 	var resp forecastResponse
 	if err := getJSON(u, &resp); err != nil {
@@ -156,6 +174,8 @@ func fetchForecast(lat, lon float64) (WeatherData, error) {
 		Condition:     conditionFromCode(resp.Current.WeatherCode),
 		Temperature:   resp.Current.Temperature,
 		Precipitation: resp.Current.Precipitation,
+		WindSpeed:     resp.Current.WindSpeed,
+		WindDirection: resp.Current.WindDirection,
 	}, nil
 }
 

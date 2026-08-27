@@ -280,6 +280,13 @@ func applyWeather(st *modes.State, wd modes.WeatherData, live bool, ticker *time
 	st.Intensity = wd.Intensity()
 	initMode(st)
 	resetTicker(ticker, st)
+	if vx, ok := wd.WindVector(); ok {
+		st.WindLive = true
+		st.WindTargetLive = vx
+	} else {
+		// offline or calm air: fall back to simulated wind
+		st.WindLive = false
+	}
 }
 
 func initMode(st *modes.State) {

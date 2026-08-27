@@ -11,7 +11,122 @@ func (st *State) InitSnow() {
 	st.Wind = 0
 	st.WindTarget = 0
 	st.WindTick = 0
+	st.GustTimer = 120 + rand.Intn(120)
 	st.initSnow()
+}
+
+func (st *State) initSnow() {
+	if st.Width <= 0 || st.Height <= 0 {
+		st.Flakes = nil
+		st.AccumRow = nil
+		st.RoofAccum = nil
+		return
+	}
+	st.AccumRow = make([]int, st.Width)
+	st.RoofAccum = make([]int, st.Width)
+	n := (st.Width * st.Height) / 120
+	if n < 8 {
+		n = 8
+	}
+	lightChars := []rune{'·', '∗', '❄', '✻'}
+	heavyChars := []rune{'|', '•'}
+	st.Flakes = make([]Snowflake, n)
+	for i := range st.Flakes {
+		w := 0.2 + rand.Float64()*0.8
+		var ch rune
+		if w > 0.7 {
+			ch = heavyChars[rand.Intn(len(heavyChars))]
+		} else if w < 0.4 {
+			ch = lightChars[rand.Intn(len(lightChars))]
+		} else {
+			all := append(append([]rune{}, lightChars...), heavyChars...)
+			ch = all[rand.Intn(len(all))]
+		}
+		st.Flakes[i] = Snowflake{
+			X:      float64(rand.Intn(st.Width)),
+			Y:      float64(rand.Intn(st.Height)),
+			Weight: w,
+			Speed:  0.08 + w*0.18,
+			Drift:  (rand.Float64() - 0.5) * (0.25 - w*0.15),
+			Char:   ch,
+			Active: true,
+		}
+	}
+}
+
+// snowMaxAccum returns the ground bank height for the current intensity, so
+// light snow leaves a thin dusting and a whiteout builds real banks.
+func (st *State) snowMaxAccum(h int) int {
+	m := int(float64(h) * 0.16 * (0.5 + st.Intensity*0.5))
+	if m < 1 {
+		m = 1
+	}
+	return m
+}
+
+// snowGroundDeposit layers snow on the ground. On the coast the only ground
+// is the lighthouse rock, which catches a thin dusting; in the city the bank
+// builds into neighbors for a windswept drift.
+func (st *State) snowGroundDeposit(col, maxAccum, w int) {
+	if w == 0 {
+		return
+	}
+	if st.World == WorldCoast {
+		if col < st.Coast.LighthouseX-2 || col > st.Coast.LighthouseX+2 {
+			return
+		}
+		limit := 1 + int(st.Intensity*3)
+		if limit > 4 {
+			limit = 4
+		}
+		if st.AccumRow[col] < limit {
+			st.AccumRow[col]++
+		}
+		return
+	}
+	best := col
+	bestHeight := maxAccum + 1
+	for dx := -1; dx <= 1; dx++ {
+		c := col + dx
+		if c < 0 || c >= w {
+			continue
+		}
+		if st.AccumRow[c] < bestHeight {
+			best = c
+			bestHeight = st.AccumRow[c]
+		}
+	}
+	if bestHeight < maxAccum {
+		st.AccumRow[best]++
+	}
+}
+
+// snowRoofDeposit layers snow on the roofed column with the least snow
+// nearby, so city rooftops catch drifts in windswept shapes. Snow never
+// lands on a column without a roof.
+func (st *State) snowRoofDeposit(col, w int) {
+	if st.World != WorldCity || w == 0 {
+		return
+	}
+	limit := 2 + int(st.Intensity*3)
+	if limit > 6 {
+		limit = 6
+	}
+	best := col
+	bestVal := limit + 1
+	for dx := -1; dx <= 1; dx++ {
+		c := col + dx
+		if c < 0 || c >= w || st.roofAt(c) < 0 {
+			continue
+		}
+		if st.RoofAccum[c] < bestVal {
+			best = c
+			bestVal = st.RoofAccum[c]
+		}
+	}
+	if bestVal < limit {
+		st.RoofAccum[best]++
+	}
 }
 
 func DrawSnow(screen tcell.Screen, st *State) {
@@ -20,6 +135,7 @@ func DrawSnow(screen tcell.Screen, st *State) {
 		return
 	}
 	st.updateWind()
+	st.updateGust()
 	mult := st.Speed.SpeedMultiplier()
 	if st.FocusMode {
 		mult *= 0.85
@@ -28,13 +144,13 @@ func DrawSnow(screen tcell.Screen, st *State) {
 
 	lightChars := []rune{'·', '∗', '❄', '✻'}
 	heavyChars := []rune{'|', '•'}
-	maxAccum := h / 6
-	if maxAccum < 1 {
-		maxAccum = 1
-	}
+	maxAccum := st.snowMaxAccum(h)
 
 	if len(st.AccumRow) != w {
 		st.AccumRow = make([]int, w)
+	}
+	if len(st.RoofAccum) != w {
+		st.RoofAccum = make([]int, w)
 	}
 
 	drawAuroraSky(screen, st)
@@ -53,38 +169,6 @@ func DrawSnow(screen tcell.Screen, st *State) {
 		} else {
 			all := append(append([]rune{}, lightChars...), heavyChars...)
 			f.Char = all[rand.Intn(len(all))]
-		}
-	}
-
-	depositSnow := func(col int) {
-		if w == 0 {
-			return
-		}
-		// On the coast snow fades into the sea; only the lighthouse rock
-		// catches any, capped at a thin dusting.
-		if st.World == WorldCoast {
-			if col < st.Coast.LighthouseX-2 || col > st.Coast.LighthouseX+2 {
-				return
-			}
-			if st.AccumRow[col] < 3 {
-				st.AccumRow[col]++
-			}
-			return
-		}
-		best := col
-		bestHeight := maxAccum + 1
-		for dx := -1; dx <= 1; dx++ {
-			c := col + dx
-			if c < 0 || c >= w {
-				continue
-			}
-			if st.AccumRow[c] < bestHeight {
-				best = c
-				bestHeight = st.AccumRow[c]
-			}
-		}
-		if bestHeight < maxAccum {
-			st.AccumRow[best]++
 		}
 	}
 	smoothAccum := func() {
@@ -132,7 +216,11 @@ func DrawSnow(screen tcell.Screen, st *State) {
 			screen.SetContent(x, y, f.Char, nil, style)
 		}
 		f.Y += f.Speed * mult
-		f.X += f.Drift*mult + st.Wind*(1.0-f.Weight)*0.3*mult
+		// rolling gust leans the whole field together as the band passes,
+		// the same system rain uses
+		gdx := (f.X - st.GustX) / st.GustWidth
+		gust := st.GustStrength * math.Exp(-gdx*gdx*2) * (0.5 + st.Intensity*0.5)
+		f.X += f.Drift*mult + (st.Wind+gust)*(1.0-f.Weight)*0.3*mult
 		if int(f.X) < 0 {
 			f.X = float64(w - 1)
 		}
@@ -151,37 +239,50 @@ func DrawSnow(screen tcell.Screen, st *State) {
 			accum = maxAccum
 			st.AccumRow[col] = accum
 		}
+		// city rooftops catch snow before the flake can fall past them
+		if st.World == WorldCity {
+			if roof := st.roofAt(col); roof >= 0 && int(f.Y) >= roof {
+				st.snowRoofDeposit(col, w)
+				resetFlake(f)
+				continue
+			}
+		}
 		if int(f.Y) >= h {
-			depositSnow(col)
+			st.snowGroundDeposit(col, maxAccum, w)
 			resetFlake(f)
 			continue
 		}
 		if accum > 0 {
 			topAccumY := h - accum
 			if int(f.Y) >= topAccumY {
-				depositSnow(col)
+				st.snowGroundDeposit(col, maxAccum, w)
 				resetFlake(f)
 				continue
 			}
 		}
 	}
-	smoothAccum()
+	if st.World == WorldCity {
+		smoothAccum()
+	}
 }
 
-// DrawSnowForeground renders the accumulated snow and the pine tree on top
-// of the city, since DrawSnow draws only the falling flakes behind it.
+// DrawSnowForeground renders what snow has accumulated in front of the
+// world: the ground bank and rooftop caps in the city, the rock dusting on
+// the coast, and the pine tree.
 func DrawSnowForeground(screen tcell.Screen, st *State) {
 	w, h := st.Width, st.Height
 	if w == 0 || h == 0 {
 		return
 	}
+	if st.World == WorldCoast {
+		drawRockSnow(screen, st)
+		return
+	}
 	accumStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
 	accumTopStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset)
-	maxAccum := h / 6
-	if maxAccum < 1 {
-		maxAccum = 1
-	}
+	maxAccum := st.snowMaxAccum(h)
 
+	// ground bank, windswept from the deposit logic
 	for x := 0; x < w; x++ {
 		height := st.AccumRow[x]
 		if height > maxAccum {
@@ -204,8 +305,51 @@ func DrawSnowForeground(screen tcell.Screen, st *State) {
 			screen.SetContent(x, y, ch, nil, style)
 		}
 	}
-	if st.World == WorldCity {
-		drawPine(screen, st)
+
+	// rooftop caps: white panels over the top of each snowed building
+	white := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset)
+	for x := 0; x < w; x++ {
+		rd := st.RoofAccum[x]
+		if rd <= 0 {
+			continue
+		}
+		roof := st.roofAt(x)
+		if roof < 0 {
+			continue
+		}
+		for k := 0; k < rd; k++ {
+			y := roof + k
+			if y >= st.City.HorizonY || y >= h {
+				break
+			}
+			screen.SetContent(x, y, '▄', nil, white)
+		}
+	}
+	drawPine(screen, st)
+}
+
+// drawRockSnow dusts the lighthouse rock white where flakes landed on it.
+func drawRockSnow(screen tcell.Screen, st *State) {
+	w, h := st.Width, st.Height
+	horizon := st.City.HorizonY
+	if horizon <= 0 || horizon >= h {
+		return
+	}
+	white := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset)
+	dim := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+	lx := st.Coast.LighthouseX
+	for x := lx - 2; x <= lx+2; x++ {
+		if x < 0 || x >= w {
+			continue
+		}
+		a := st.AccumRow[x]
+		if a <= 0 {
+			continue
+		}
+		screen.SetContent(x, horizon, '▀', nil, white)
+		if a >= 2 && horizon+1 < h {
+			screen.SetContent(x, horizon+1, '▄', nil, dim)
+		}
 	}
 }
 

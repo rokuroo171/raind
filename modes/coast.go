@@ -159,11 +159,13 @@ func drawLighthouse(screen tcell.Screen, st *State) {
 	if x < 0 || x >= w-1 || top >= horizon {
 		return
 	}
-	tower := tcell.StyleDefault.Foreground(tcell.NewHexColor(0xcfd6e4)).Background(tcell.ColorReset)
+	tower := tcell.StyleDefault.Foreground(tcell.NewHexColor(0xe9edf5)).Background(tcell.ColorReset)
 	lantern := tcell.StyleDefault.Foreground(tcell.NewHexColor(0xffe9a8)).Background(tcell.ColorReset)
 	band := tcell.StyleDefault.Foreground(tcell.NewHexColor(0xb3453a)).Background(tcell.ColorReset)
 	rock := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x232a36)).Background(tcell.ColorReset)
-	beam := tcell.StyleDefault.Foreground(tcell.NewHexColor(0xf4edcf)).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+	// pure white bold, not dim cream, so the beam reads as light even in
+	// terminals that map warm tones to brown
+	beam := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrBold)
 
 	stripe := top + st.Coast.LighthouseH/2
 	for y := top; y < horizon; y++ {
@@ -236,11 +238,16 @@ func (st *State) updateBoat(screen tcell.Screen) {
 		return
 	}
 	style := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x6b768c)).Background(tcell.ColorReset)
+	hull := style
+	if st.Mode == ModeSnow {
+		// the boat roof whitens under the snowfall
+		hull = tcell.StyleDefault.Foreground(tcell.NewHexColor(0xd7dde8)).Background(tcell.ColorReset)
+	}
 	wake := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x54647c)).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
 	screen.SetContent(x, b.Y-1, '│', nil, style)
-	screen.SetContent(x-1, b.Y, '_', nil, style)
-	screen.SetContent(x, b.Y, '_', nil, style)
-	screen.SetContent(x+1, b.Y, '_', nil, style)
+	screen.SetContent(x-1, b.Y, '_', nil, hull)
+	screen.SetContent(x, b.Y, '_', nil, hull)
+	screen.SetContent(x+1, b.Y, '_', nil, hull)
 	for k := 1; k <= 3; k++ {
 		wx := x - int(b.Dir*float64(k))
 		if wx >= 0 && wx < w && b.Y+1 < h {

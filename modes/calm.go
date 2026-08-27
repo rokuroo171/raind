@@ -15,7 +15,9 @@ type Cloud struct {
 	Speed float64
 }
 
-var cloudChars = []rune{'░', '▒', '▄', '▀'}
+// only shade chars, no solid half-blocks, so clouds drift as a wisp
+// instead of scattering blocky pixels across the sky
+var cloudChars = []rune{'░', '▒'}
 
 // daytime returns how much daylight a given hour has, 0 at night and 1 at noon.
 // Sunrise is 6, sunset is 18, and the curve is a sine so transitions are smooth.
@@ -32,17 +34,17 @@ func (st *State) initClouds() {
 		st.Clouds = nil
 		return
 	}
-	n := st.Width / 12
+	n := st.Width / 16
 	if n < 2 {
 		n = 2
 	}
-	if n > 10 {
-		n = 10
+	if n > 8 {
+		n = 8
 	}
 	clouds := make([]Cloud, n)
 	for i := range clouds {
 		c := &clouds[i]
-		c.W = 4 + rand.Intn(6)
+		c.W = 3 + rand.Intn(4)
 		c.Cells = make([]rune, c.W)
 		for j := range c.Cells {
 			c.Cells[j] = cloudChars[rand.Intn(len(cloudChars))]
