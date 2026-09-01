@@ -368,6 +368,76 @@ func (st *State) targetParticleCount(intensity float64) int {
 	return total
 }
 
+// adjustParticleCount gently adds or removes particles so the field stays
+// close to the target without resetting existing drops. Each frame it
+// spawns or culls at most a handful, so transitions are invisible.
+func (st *State) adjustParticleCount(intensity float64) {
+	if st.Width <= 0 || st.Height <= 0 {
+		return
+	}
+	farN, midN, nearN, total := st.countsFor(intensity)
+	if total < 1 {
+		return
+	}
+	// count current particles per plane
+	var cur [3]int
+	for i := range st.Particles {
+		if st.Particles[i].Active && st.Particles[i].Plane >= 0 && st.Particles[i].Plane <= 2 {
+			cur[st.Particles[i].Plane]++
+		}
+	}
+	target := [3]int{farN, midN, nearN}
+	// add a few particles per frame toward the target
+	added := 0
+	for plane := 0; plane < 3 && added < 4; plane++ {
+		for cur[plane] < target[plane] && added < 4 {
+			p := particleForPlane(plane)
+			p.X = float64(rand.Intn(st.Width))
+			p.Y = float64(rand.Intn(st.Height))
+			st.Particles = append(st.Particles, p)
+			cur[plane]++
+			added++
+	}
+	}
+	if added > 0 {
+		return
+	}
+	// remove a few particles per frame if over target, prefer off-screen
+	removed := 0
+	for plane := 2; plane >= 0 && removed < 4; plane-- {
+		for cur[plane] > target[plane]+2 && removed < 4 {
+			// find one to remove: prefer off-screen or far-plane particles
+			idx := -1
+			for i := range st.Particles {
+				if st.Particles[i].Active && st.Particles[i].Plane == plane {
+					p := &st.Particles[i]
+					if p.Y < 0 || p.Y >= float64(st.Height) || p.Splash > 0 {
+						idx = i
+						break
+					}
+				}
+			}
+			if idx < 0 {
+				// no off-screen pick, remove any active one
+				for i := range st.Particles {
+					if st.Particles[i].Active && st.Particles[i].Plane == plane {
+						idx = i
+						break
+					}
+				}
+			}
+			if idx < 0 {
+				break
+			}
+			// swap-remove to avoid shifting
+			st.Particles[idx] = st.Particles[len(st.Particles)-1]
+			st.Particles = st.Particles[:len(st.Particles)-1]
+			cur[plane]--
+			removed++
+		}
+	}
+}
+
 func (st *State) initMeteors() {
 	if st.Width <= 0 || st.Height <= 0 {
 		st.Meteors = nil

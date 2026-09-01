@@ -15,15 +15,7 @@ func DrawThunderstorm(screen tcell.Screen, st *State) {
 		}
 	}
 
-	target := st.targetParticleCount(st.StormIntensity)
-	if target > 0 {
-		cur := len(st.Particles)
-		lo := target * 8 / 10
-		hi := target*12/10 + 1
-		if cur < lo || cur > hi {
-			st.initParticles(st.StormIntensity)
-		}
-	}
+	st.adjustParticleCount(st.StormIntensity)
 
 	st.updateStormCell()
 	st.updateCadence()
