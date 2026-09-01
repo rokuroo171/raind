@@ -24,9 +24,9 @@ func (st *State) initSnow() {
 	}
 	st.AccumRow = make([]int, st.Width)
 	st.RoofAccum = make([]int, st.Width)
-	n := (st.Width * st.Height) / 120
-	if n < 8 {
-		n = 8
+	n := (st.Width * st.Height) / 45
+	if n < 20 {
+		n = 20
 	}
 	lightChars := []rune{'·', '∗', '❄', '✻'}
 	heavyChars := []rune{'|', '•'}

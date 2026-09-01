@@ -123,8 +123,8 @@ func TestBurstFiresThenLulls(t *testing.T) {
 			fired++
 		}
 	}
-	if fired < 2 || fired > 4 {
-		t.Fatalf("burst should fire 2-4 strikes, got %d", fired)
+	if fired < 4 || fired > 8 {
+		t.Fatalf("burst should fire 4-8 strikes, got %d", fired)
 	}
 	if st.LullTimer <= 0 {
 		t.Fatal("finished burst should enter a lull")

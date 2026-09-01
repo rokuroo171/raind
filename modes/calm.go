@@ -34,17 +34,17 @@ func (st *State) initClouds() {
 		st.Clouds = nil
 		return
 	}
-	n := st.Width / 16
-	if n < 2 {
-		n = 2
+	n := st.Width / 8
+	if n < 4 {
+		n = 4
 	}
-	if n > 8 {
-		n = 8
+	if n > 16 {
+		n = 16
 	}
 	clouds := make([]Cloud, n)
 	for i := range clouds {
 		c := &clouds[i]
-		c.W = 3 + rand.Intn(4)
+		c.W = 4 + rand.Intn(6)
 		c.Cells = make([]rune, c.W)
 		for j := range c.Cells {
 			c.Cells[j] = cloudChars[rand.Intn(len(cloudChars))]
@@ -138,9 +138,9 @@ func (st *State) drawMoonStars(screen tcell.Screen) {
 		for i := 0; i < n; i++ {
 			x := (i * 7919) % st.Width
 			y := (i*104729)%(horizon-2) + 1
-			if (x+y+st.Frame)%40 < 8 {
-				screen.SetContent(x, y, '·', nil, dim)
-			}
+		if (x+y+st.Frame)%30 < 10 {
+			screen.SetContent(x, y, '·', nil, dim)
+		}
 		}
 	}
 }

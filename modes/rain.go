@@ -306,20 +306,23 @@ func particleForPlane(plane int) Particle {
 
 // countsFor splits the particle budget across planes by intensity. Light rain
 // fills only the far plane, a downpour fills and weights the near plane.
+// Multipliers tuned for screensaver density: fills the screen without
+// overwhelming slow terminals.
 func (st *State) countsFor(intensity float64) (farN, midN, nearN, total int) {
 	w := st.Width
 	if w <= 0 {
 		return 0, 0, 0, 0
 	}
-	farN = int(float64(w) * (0.12 + intensity*0.18))
-	midN = int(float64(w) * intensity * 0.35)
-	nearN = int(float64(w) * intensity * 0.5)
+	// 2.5× the original density for a richer field of rain
+	farN = int(float64(w) * (0.30 + intensity*0.45))
+	midN = int(float64(w) * intensity * 0.85)
+	nearN = int(float64(w) * intensity * 1.2)
 	total = farN + midN + nearN
 	if total < 1 {
 		farN, midN, nearN, total = 1, 0, 0, 1
 		return
 	}
-	maxN := w * st.Height / 4
+	maxN := w * st.Height / 2
 	if maxN < 1 {
 		maxN = 1
 	}
@@ -372,9 +375,9 @@ func (st *State) initMeteors() {
 		st.Sparks = nil
 		return
 	}
-	nStars := (st.Width * st.Height) / 180
-	if nStars < 24 {
-		nStars = 24
+	nStars := (st.Width * st.Height) / 80
+	if nStars < 50 {
+		nStars = 50
 	}
 	starChars := []rune{'.', '·', '+', '∙', '˙'}
 	st.Stars = make([]Star, nStars)

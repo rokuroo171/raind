@@ -91,7 +91,7 @@ func (st *State) updateStormCell() {
 }
 
 // updateCadence drives the burst-and-lull rhythm. The storm sleeps through a
-// lull, then fires 2 to 4 strikes close together, then sleeps again.
+// lull, then fires 4 to 8 strikes close together, then sleeps again.
 // Intensity shortens the lull and lengthens the burst.
 func (st *State) updateCadence() {
 	if st.LullTimer > 0 {
@@ -99,9 +99,9 @@ func (st *State) updateCadence() {
 		return
 	}
 	if st.BurstLeft == 0 {
-		// a lull just ended: arm a new burst of 2 to 4 strikes
-		st.BurstLeft = 2 + rand.Intn(3)
-		st.BurstTimer = 6 + rand.Intn(10)
+		// a lull just ended: arm a new burst of 4 to 8 strikes
+		st.BurstLeft = 4 + rand.Intn(5)
+		st.BurstTimer = 3 + rand.Intn(5)
 		return
 	}
 	st.BurstTimer--
@@ -113,18 +113,18 @@ func (st *State) updateCadence() {
 			// irregular, jittered gap; sometimes a second burst follows quickly,
 			// like a real storm's double flash.
 			if rand.Float64() < st.BurstDoubleChance {
-				st.BurstLeft = 2 + rand.Intn(2)
-				st.BurstTimer = 4 + rand.Intn(8)
+				st.BurstLeft = 3 + rand.Intn(3)
+				st.BurstTimer = 2 + rand.Intn(5)
 				return
 			}
-			base := float64(250 + rand.Intn(450))
-			lull := int(base * (1.4 - st.StormIntensity*0.7) * (0.75 + rand.Float64()*0.5))
-			if lull < 30 {
-				lull = 30
+			base := float64(120 + rand.Intn(200))
+			lull := int(base * (1.2 - st.StormIntensity*0.5) * (0.7 + rand.Float64()*0.6))
+			if lull < 20 {
+				lull = 20
 			}
 			st.LullTimer = lull
 		} else {
-			st.BurstTimer = 6 + rand.Intn(10)
+			st.BurstTimer = 3 + rand.Intn(5)
 		}
 	}
 }
@@ -169,14 +169,14 @@ func (st *State) spawnLightning() {
 	}
 	// roughly a third of storm events are cloud flashes: the stroke lights
 	// the cloud from inside and never reaches ground
-	if rand.Float64() < 0.33 {
+	if rand.Float64() < 0.25 {
 		st.cloudFlash()
 		return
 	}
 	power := (1 - st.CellDist) * (0.5 + st.StormIntensity*0.5)
 	nBolts := 1
-	if st.StormIntensity > 0.55 && rand.Float64() < 0.40 {
-		nBolts = 2 + rand.Intn(2)
+	if st.StormIntensity > 0.4 && rand.Float64() < 0.55 {
+		nBolts = 2 + rand.Intn(3)
 	}
 	aim, stop := st.boltTarget()
 	startY := 1 + int(float64(st.City.HorizonY)*st.CellDist*7/10)

@@ -70,28 +70,44 @@ func drawSea(screen tcell.Screen, st *State) {
 	if horizon <= 0 || horizon >= h {
 		return
 	}
-	crest := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x2c3849)).Background(tcell.ColorReset)
-	spark := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x46586f)).Background(tcell.ColorReset)
+	// colour palette: shore foam, mid-wave crest, sparkle, deep trough, shimmer
+	foam := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x6a7a8f)).Background(tcell.ColorReset)
+	crest := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x3d4f63)).Background(tcell.ColorReset)
+	spark := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x4a5c70)).Background(tcell.ColorReset)
 	deep := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x1a2230)).Background(tcell.ColorReset)
+	shimmer := tcell.StyleDefault.Foreground(tcell.NewHexColor(0x5a6c80)).Background(tcell.ColorReset)
 	depth := h - horizon
+	frameT := float64(st.Frame)
 	for y := horizon; y < h; y++ {
 		row := float64(y - horizon)
-		// phase barely couples to the row so waves travel sideways, not diagonally
-		phase := float64(st.Frame)*0.05 + row*0.08
+		rowNorm := row / float64(depth) // 0 at horizon, 1 at bottom
+		// three travelling waves at different scales; phase couples weakly to
+		// the row so crests roll sideways rather than diagonally
+		phase := frameT*0.045 + row*0.06
 		for x := 0; x < w; x++ {
-			v := math.Sin(float64(x)*0.21+phase) + 0.35*math.Sin(float64(x)*0.05+float64(st.Frame)*0.012)
-			// near rows gain smaller ripples so the shore has more texture
-			if row > float64(depth-3) {
-				v += 0.25 * math.Sin(float64(x)*0.5-float64(st.Frame)*0.06)
+			v := math.Sin(float64(x)*0.12+phase) +
+				0.4*math.Sin(float64(x)*0.25+frameT*0.03+row*0.12) +
+				0.18*math.Sin(float64(x)*0.04+frameT*0.018)
+			// choppy ripples near shore
+			if row > float64(depth)-4 {
+				v += 0.3 * math.Sin(float64(x)*0.6-frameT*0.07)
 			}
 			var ch rune
 			var style tcell.Style
 			switch {
-			case v > 0.78:
+			// foam / whitecap
+			case v > 1.1:
+				ch, style = '≈', foam
+			case v > 0.75:
 				ch, style = '~', crest
-			case v > 0.5:
+			// mid-water sparkle
+			case v > 0.45:
 				ch, style = '·', spark
-			case v < -1.1 && row > float64(depth)/2:
+			// occasional shimmer dot
+			case v > 0.3 && math.Sin(float64(x)*0.9+frameT*0.12+row*0.3) > 0.85:
+				ch, style = '∙', shimmer
+			// deep troughs below the mid-line
+			case v < -1.05 && rowNorm > 0.45:
 				ch, style = '·', deep
 			default:
 				continue
