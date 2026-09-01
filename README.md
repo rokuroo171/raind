@@ -106,6 +106,20 @@ raind -m shower -c white -s medium
 raind --live --world coast
 ```
 
+## AUR (Arch Linux)
+
+Available on the AUR for Arch-based distributions:
+
+```bash
+# Build from source (requires go)
+yay -S raind
+paru -S raind
+
+# Prebuilt binary (no build dependencies)
+yay -S raind-bin
+paru -S raind-bin
+```
+
 ## Packaging
 
 GoReleaser builds `linux-amd64`, `linux-arm64`, `darwin-amd64`, and `darwin-arm64`.
