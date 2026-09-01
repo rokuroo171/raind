@@ -1,6 +1,6 @@
 # Maintainer: rokuroo171 <mrakkakhairilazwar@gmail.com>
 pkgname=raind
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc="Terminal weather screensaver with four modes: rain, thunder, snow, meteor"
 arch=('x86_64' 'aarch64')

@@ -85,29 +85,30 @@ func drawSea(screen tcell.Screen, st *State) {
 		// the row so crests roll sideways rather than diagonally
 		phase := frameT*0.045 + row*0.06
 		for x := 0; x < w; x++ {
-			v := math.Sin(float64(x)*0.12+phase) +
-				0.4*math.Sin(float64(x)*0.25+frameT*0.03+row*0.12) +
-				0.18*math.Sin(float64(x)*0.04+frameT*0.018)
+			v := math.Sin(float64(x)*0.18+phase) +
+				0.35*math.Sin(float64(x)*0.08+frameT*0.025+row*0.15) +
+				0.15*math.Sin(float64(x)*0.35+frameT*0.04)
 			// choppy ripples near shore
-			if row > float64(depth)-4 {
-				v += 0.3 * math.Sin(float64(x)*0.6-frameT*0.07)
+			if row > float64(depth)-3 {
+				v += 0.25 * math.Sin(float64(x)*0.5-frameT*0.08)
 			}
 			var ch rune
 			var style tcell.Style
 			switch {
 			// foam / whitecap
-			case v > 1.1:
+			case v > 1.25:
 				ch, style = '≈', foam
-			case v > 0.75:
+			// crest
+			case v > 0.9:
 				ch, style = '~', crest
-			// mid-water sparkle
-			case v > 0.45:
+			// mid-water sparkle (sparse)
+			case v > 0.7 && math.Sin(float64(x)*1.2+frameT*0.08+row*0.4) > 0.7:
 				ch, style = '·', spark
-			// occasional shimmer dot
-			case v > 0.3 && math.Sin(float64(x)*0.9+frameT*0.12+row*0.3) > 0.85:
+			// shimmer dot (very rare)
+			case v > 0.6 && math.Sin(float64(x)*0.9+frameT*0.12+row*0.3) > 0.92:
 				ch, style = '∙', shimmer
 			// deep troughs below the mid-line
-			case v < -1.05 && rowNorm > 0.45:
+			case v < -1.15 && rowNorm > 0.5:
 				ch, style = '·', deep
 			default:
 				continue

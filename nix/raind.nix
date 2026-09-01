@@ -5,7 +5,7 @@
 # and the maintainer needs an entry in pkgs/maintainers/maintainer-list.nix.
 buildGoModule rec {
   pname = "raind";
-  version = "0.2.0";
+  version = "0.3.0";
 
   src = fetchFromGitHub {
     owner = "rokuroo171";

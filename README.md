@@ -14,7 +14,7 @@ Terminal weather screensaver written in Go. Four modes: rain, thunder, snow, and
 
 ## Install
 
-Linux/macOS **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.2.0**:
+Linux/macOS **amd64** (`x86_64`) or **arm64** (`aarch64`), release **v0.3.0**:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rokuroo171/raind/main/install.sh | sh
@@ -36,7 +36,7 @@ INSTALL_DIR=$HOME/.local/bin ./install.sh
 VERSION=0.2.0 ./install.sh
 ```
 
-Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.2.0_linux_amd64.tar.gz`, `raind_0.2.0_linux_arm64.tar.gz`, `raind_0.2.0_darwin_amd64.tar.gz`, `raind_0.2.0_darwin_arm64.tar.gz`).
+Manual download: [GitHub Releases](https://github.com/rokuroo171/raind/releases) (`raind_0.3.0_linux_amd64.tar.gz`, `raind_0.3.0_linux_arm64.tar.gz`, `raind_0.3.0_darwin_amd64.tar.gz`, `raind_0.3.0_darwin_arm64.tar.gz`).
 
 ## Build from source
 
