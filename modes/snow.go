@@ -57,7 +57,7 @@ func (st *State) initSnow() {
 // snowMaxAccum returns the ground bank height for the current intensity, so
 // light snow leaves a thin dusting and a whiteout builds real banks.
 func (st *State) snowMaxAccum(h int) int {
-	m := int(float64(h) * 0.16 * (0.5 + st.Intensity*0.5))
+	m := int(float64(h) * 0.20 * (0.5 + st.Intensity*0.6))
 	if m < 1 {
 		m = 1
 	}
@@ -75,9 +75,9 @@ func (st *State) snowGroundDeposit(col, maxAccum, w int) {
 		if col < st.Coast.LighthouseX-2 || col > st.Coast.LighthouseX+2 {
 			return
 		}
-		limit := 1 + int(st.Intensity*3)
-		if limit > 4 {
-			limit = 4
+		limit := 2 + int(st.Intensity*4)
+		if limit > 6 {
+			limit = 6
 		}
 		if st.AccumRow[col] < limit {
 			st.AccumRow[col]++
@@ -108,10 +108,10 @@ func (st *State) snowRoofDeposit(col, w int) {
 	if st.World != WorldCity || w == 0 {
 		return
 	}
-	limit := 2 + int(st.Intensity*3)
-	if limit > 6 {
-		limit = 6
-	}
+	limit := 3 + int(st.Intensity*4)
+		if limit > 8 {
+			limit = 8
+		}
 	best := col
 	bestVal := limit + 1
 	for dx := -1; dx <= 1; dx++ {
@@ -362,12 +362,9 @@ func drawAuroraSky(screen tcell.Screen, st *State) {
 	if bandTop < 3 {
 		bandTop = 3
 	}
-	pulseBoost := 0.0
-	if st.Frame%480 < 24 {
-		pulseBoost = 0.18
-	}
+	pulseBoost := 0.10 + st.Intensity*0.2
 	if st.FocusMode {
-		pulseBoost *= 0.5
+		pulseBoost *= 0.7
 	}
 	for x := 0; x < w; x++ {
 		wave := math.Sin(float64(x)*0.085+float64(st.Frame)*0.018)*0.55 +

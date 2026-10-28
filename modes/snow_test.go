@@ -48,7 +48,7 @@ func TestSnowRoofDepositCaps(t *testing.T) {
 			break
 		}
 	}
-	limit := 2 + int(st.Intensity*3)
+	limit := 3 + int(st.Intensity*4)
 	for i := 0; i < limit+10; i++ {
 		st.snowRoofDeposit(roofCol, 40)
 	}
@@ -67,7 +67,7 @@ func TestSnowCoastRockCaps(t *testing.T) {
 	st.AccumRow = make([]int, 40)
 
 	lx := st.Coast.LighthouseX
-	limit := 1 + int(st.Intensity*3)
+	limit := 2 + int(st.Intensity*4)
 	for i := 0; i < limit+10; i++ {
 		st.snowGroundDeposit(lx, 10, 40)
 	}

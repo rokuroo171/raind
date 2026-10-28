@@ -9,7 +9,7 @@ import (
 
 func DrawThunderstorm(screen tcell.Screen, st *State) {
 	if st.StormIntensity < 1.0 {
-		st.StormIntensity += 0.0008
+		st.StormIntensity += 0.002
 		if st.StormIntensity > 1.0 {
 			st.StormIntensity = 1.0
 		}
@@ -20,26 +20,34 @@ func DrawThunderstorm(screen tcell.Screen, st *State) {
 	st.updateStormCell()
 	st.updateCadence()
 
-	// the sky flash is a soft dim shimmer, not a solid sheet, so the bolt
-	// stays visible against it instead of washing out in white-on-white
+	// the sky flash now fills the frame with bright white during active bolts
+	// so the whole storm glows intensely, not just the individual bolts
 	if st.StormFlash > 0 {
 		flashRows := st.StormFlash
 		if st.Height < flashRows {
 			flashRows = st.Height
 		}
-		flashStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+		flashStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrBold)
 		for y := 0; y < flashRows; y++ {
 			for x := 0; x < st.Width; x++ {
 				screen.SetContent(x, y, '░', nil, flashStyle)
 			}
 		}
-		st.StormFlash--
+		// decay: keep flash alive during intense storms; clear quickly when weak
+		if st.StormIntensity > 0.5 {
+			st.StormFlash--
+		} else {
+			st.StormFlash -= 2
+		}
+		if st.StormFlash < 0 {
+			st.StormFlash = 0
+		}
 	}
 
-	// the cloud flash: no bolt, just a diffuse bloom lighting the cloud
-	// interior at the cell position for a moment
+	// the cloud flash: bright bloom lighting the cloud interior
+	// now much more visible so the cloud lights up during strikes
 	if st.CloudGlow > 0 {
-		glow := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrDim)
+		glow := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorReset).Attributes(tcell.AttrBold)
 		cx := st.CloudGlowX
 		for dy := 1; dy <= 3; dy++ {
 			for dx := -3 + dy; dx <= 3-dy; dx++ {
@@ -109,12 +117,12 @@ func (st *State) updateCadence() {
 				st.BurstTimer = 2 + rand.Intn(5)
 				return
 			}
-			base := float64(120 + rand.Intn(200))
-			lull := int(base * (1.2 - st.StormIntensity*0.5) * (0.7 + rand.Float64()*0.6))
-			if lull < 20 {
-				lull = 20
-			}
-			st.LullTimer = lull
+		base := float64(80 + rand.Intn(120))
+		lull := int(base * (1.0 - st.StormIntensity*0.8) * (0.5 + rand.Float64()*0.5))
+		if lull < 15 {
+			lull = 15
+		}
+		st.LullTimer = lull
 		} else {
 			st.BurstTimer = 3 + rand.Intn(5)
 		}
@@ -159,16 +167,15 @@ func (st *State) spawnLightning() {
 	if w <= 0 || h <= 2 {
 		return
 	}
-	// roughly a third of storm events are cloud flashes: the stroke lights
-	// the cloud from inside and never reaches ground
-	if rand.Float64() < 0.25 {
+	// most storm events produce ground lightning; cloud flashes only during weak storms
+	if st.StormIntensity < 0.3 && rand.Float64() < 0.3 {
 		st.cloudFlash()
 		return
 	}
 	power := (1 - st.CellDist) * (0.5 + st.StormIntensity*0.5)
-	nBolts := 1
-	if st.StormIntensity > 0.4 && rand.Float64() < 0.55 {
-		nBolts = 2 + rand.Intn(3)
+	nBolts := 2
+	if st.StormIntensity > 0.7 {
+		nBolts = 3
 	}
 	aim, stop := st.boltTarget()
 	startY := 1 + int(float64(st.City.HorizonY)*st.CellDist*7/10)
@@ -368,21 +375,20 @@ func (st *State) drawLightning(screen tcell.Screen) {
 			remaining = append(remaining, *b)
 			continue
 		}
-		if b.FramesLeft > 0 {
-			if b.HaloFrame {
-				st.StormFlash = max(st.StormFlash, 1+int(b.Power*2))
-				haloW := 1 + int(b.Power*2)
-				for _, pt := range b.Channel.Points {
-					for dx := -haloW; dx <= haloW; dx++ {
-						if dx == 0 {
-							continue
-						}
-						hx := pt.X + dx
-						if hx >= 0 && hx < w && pt.Y >= 0 && pt.Y < h {
-							screen.SetContent(hx, pt.Y, '░', nil, haloStyle)
+		if b.FramesLeft > 0 {if b.HaloFrame {
+				st.StormFlash = max(st.StormFlash, 3+int(b.Power*3))
+					haloW := 2 + int(b.Power*3)
+					for _, pt := range b.Channel.Points {
+						for dx := -haloW; dx <= haloW; dx++ {
+							if dx == 0 {
+								continue
+							}
+							hx := pt.X + dx
+							if hx >= 0 && hx < w && pt.Y >= 0 && pt.Y < h {
+								screen.SetContent(hx, pt.Y, '░', nil, haloStyle)
+							}
 						}
 					}
-				}
 				b.HaloFrame = false
 			}
 			b.drawBolt(screen, w, h)
@@ -462,6 +468,8 @@ func (st *State) drawThunderDepthLayer(screen tcell.Screen) {
 		return
 	}
 	depthStyle := rainStyle(st.Color, true)
+	// make depth layer particles bolder during active thunderstorm
+	mult := st.StormIntensity
 	for i := range st.Particles {
 		if i%2 == 1 {
 			continue
@@ -470,8 +478,10 @@ func (st *State) drawThunderDepthLayer(screen tcell.Screen) {
 		if !p.Active || p.Splash > 0 {
 			continue
 		}
-		headX := int(math.Round(p.X - p.VX*1.4))
-		headY := int(math.Round(p.Y - p.VY*0.7))
+		headX := int(math.Round(p.X - p.VX*1.4*
+			mult))
+		headY := int(math.Round(p.Y - p.VY*0.7*
+			mult))
 		if headY < 0 || headY >= h {
 			continue
 		}
@@ -479,7 +489,8 @@ func (st *State) drawThunderDepthLayer(screen tcell.Screen) {
 		if headX < 0 {
 			headX += w
 		}
-		ch := rainGlyphForWind(p.VX * 0.75)
+		// use bold wind glyph during storm
+		ch := rainGlyphForWind(p.VX * 0.75 * mult)
 		screen.SetContent(headX, headY, ch, nil, depthStyle)
 	}
 }
@@ -503,6 +514,6 @@ func (st *State) InitThunderstorm() {
 	st.BurstLeft = 0
 	st.BurstTimer = 0
 	st.LullTimer = 40 + rand.Intn(80)
-	st.BurstDoubleChance = 0.25
+	st.BurstDoubleChance = 0.5
 	st.initParticles(st.StormIntensity)
 }
